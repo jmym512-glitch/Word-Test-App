@@ -39,9 +39,9 @@ export const UnitSelectScreen: React.FC<UnitSelectScreenProps> = ({
 
   const getButtonText = (unit: ExamUnit) => {
     if (unit.status === 'completed') {
-      return `${unit.unitNumber}단원 재응시 (오답 복습 및 다시 풀기)`;
+      return "Let's Start! (Retake)";
     }
-    return `${unit.unitNumber}단원 시험 시작하기`;
+    return "Let's Start!";
   };
 
   return (
@@ -96,10 +96,10 @@ export const UnitSelectScreen: React.FC<UnitSelectScreenProps> = ({
             <span className="text-[12px] text-[#64748b] font-medium">{currentDateFormatted}</span>
           </div>
           <h1 className="text-[22px] sm:text-[24px] font-extrabold text-[#0c2340] tracking-tight">
-            응시할 세종한국어 단원을 선택하세요
+            Please select the session to take.
           </h1>
           <p className="text-[13px] sm:text-[14px] text-[#64748b]">
-            선생님께서 등록 및 게시하신 세종한국어 단어 시험 목록입니다. 목표 단원을 선택하여 시험을 시작하세요.
+            This is the Sejong Korean vocabulary test list. Please select your target session to begin the test.
           </p>
         </div>
 
@@ -113,7 +113,7 @@ export const UnitSelectScreen: React.FC<UnitSelectScreenProps> = ({
               현재 교사가 등록한 시험 단원이 없습니다
             </h3>
             <p className="text-[13px] text-[#64748b] max-w-md leading-relaxed">
-              선생님께서 상단 우측 [교사용 관리] 메뉴에서 세종한국어 단원을 등록하고 [게시하기]를 켜면 여기에 즉시 나타납니다.
+              선생님께서 상단 우측 [관리] 메뉴에서 세종한국어 단원을 등록하고 [게시하기]를 켜면 여기에 즉시 나타납니다.
             </p>
             <div className="flex items-center gap-3 mt-2">
               <button
@@ -218,7 +218,7 @@ export const UnitSelectScreen: React.FC<UnitSelectScreenProps> = ({
                             </span>
                             <span className="flex items-center gap-1">
                               <span className="material-symbols-outlined text-[15px] text-[#64748b]">timer</span>
-                              제한 시간: <strong>문항당 {unit.timePerQuestionSeconds}초</strong>
+                              제한 시간: <strong>총 {unit.totalTimeLimitMinutes || 10}분 (Total: {unit.totalTimeLimitMinutes || 10} min)</strong>
                             </span>
                             <span className="flex items-center gap-1">
                               <span className="material-symbols-outlined text-[15px] text-[#64748b]">translate</span>
@@ -246,22 +246,6 @@ export const UnitSelectScreen: React.FC<UnitSelectScreenProps> = ({
           </div>
         )}
 
-        {/* Exam Precautions Callout Box */}
-        {publishedUnits.length > 0 && (
-          <div className="w-full bg-[#f8fafc] rounded-2xl p-4 sm:p-5 flex items-start gap-3 border border-[#e2e8f0] shadow-sm">
-            <span className="material-symbols-outlined text-[#f59e0b] text-[20px] mt-0.5 shrink-0">
-              notifications_active
-            </span>
-            <div className="flex flex-col gap-1 text-[#0c2340]">
-              <span className="text-[13px] font-bold text-[#0c2340]">세종한국어 단어 시험 주의사항</span>
-              <p className="text-[12px] sm:text-[13px] text-[#475569] leading-relaxed">
-                <strong>[시험 시작하기]</strong>를 누르면 문항별 타이머가 시작됩니다.
-                단어의 초성·중성·종성 자모음을 차례대로 결합하여 정답을 완성하세요.
-                제출 완료 시 대진대학교 성적 서버로 자동 전송됩니다.
-              </p>
-            </div>
-          </div>
-        )}
 
         {/* Bottom Action CTAs */}
         {selectedUnit && (

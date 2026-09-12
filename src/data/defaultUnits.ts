@@ -85,6 +85,7 @@ export const SEJONG_PRESET_UNITS: ExamUnit[] = [
     status: 'in_progress',
     questionCount: 10,
     timePerQuestionSeconds: 45,
+    totalTimeLimitMinutes: 10,
     level: '세종한국어 1권',
     wordsSummary: '한국, 대학교, 학생, 회사원 등 10개',
     words: [
@@ -159,6 +160,7 @@ export const SEJONG_PRESET_UNITS: ExamUnit[] = [
     status: 'available',
     questionCount: 10,
     timePerQuestionSeconds: 45,
+    totalTimeLimitMinutes: 10,
     level: '세종한국어 1권',
     wordsSummary: '기숙사, 식당, 도서관, 은행 등 10개',
     words: [
@@ -233,6 +235,7 @@ export const SEJONG_PRESET_UNITS: ExamUnit[] = [
     status: 'available',
     questionCount: 10,
     timePerQuestionSeconds: 45,
+    totalTimeLimitMinutes: 10,
     level: '세종한국어 1권',
     wordsSummary: '사과, 빵, 우유, 주스 등 10개',
     words: [
@@ -257,6 +260,7 @@ export const SEJONG_PRESET_UNITS: ExamUnit[] = [
     status: 'available',
     questionCount: 10,
     timePerQuestionSeconds: 45,
+    totalTimeLimitMinutes: 10,
     level: '세종한국어 1권',
     wordsSummary: '아침, 점심, 저녁, 출근 등 10개',
     words: [

@@ -49,7 +49,7 @@ export const Header: React.FC<HeaderProps> = ({
                 : 'text-[#64748b] border-transparent hover:text-[#0c2340]'
             }`}
           >
-            시험 응시
+            Test
           </button>
           <button
             type="button"
@@ -60,7 +60,7 @@ export const Header: React.FC<HeaderProps> = ({
                 : 'text-[#64748b] border-transparent hover:text-[#0c2340]'
             }`}
           >
-            세종 단어장
+            Vocabulary
           </button>
           <button
             type="button"
@@ -71,7 +71,7 @@ export const Header: React.FC<HeaderProps> = ({
                 : 'text-[#64748b] border-transparent hover:text-[#0c2340]'
             }`}
           >
-            학습 성적표
+            My Page
           </button>
         </nav>
 
@@ -80,11 +80,11 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={onOpenTeacherSettings}
-            title="교사용 관리 설정 (단원 등록 및 시트 연동)"
+            title="관리 설정 (단원 등록 및 시트 연동)"
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#475569] hover:text-[#0c2340] hover:bg-[#f1f5f9] border border-transparent hover:border-[#e2e8f0] transition-all cursor-pointer"
           >
             <span className="material-symbols-outlined text-[18px]">admin_panel_settings</span>
-            <span className="text-xs font-bold hidden md:inline">교사용 관리</span>
+            <span className="text-xs font-bold hidden md:inline">관리</span>
           </button>
 
           {student ? (

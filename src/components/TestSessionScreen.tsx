@@ -22,8 +22,9 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
   onFinishTest,
   onExit,
 }) => {
+  const totalSectionSeconds = (unit.totalTimeLimitMinutes || 10) * 60;
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
-  const [timeLeft, setTimeLeft] = useState<number>(unit.timePerQuestionSeconds || 45);
+  const [timeLeft, setTimeLeft] = useState<number>(totalSectionSeconds);
   const [totalElapsedTime, setTotalElapsedTime] = useState<number>(0);
   const [questionResults, setQuestionResults] = useState<QuestionResult[]>([]);
 
@@ -42,27 +43,40 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
 
   // Time taken on current question
   const questionStartTimeRef = useRef<number>(Date.now());
+  const isFinishedRef = useRef<boolean>(false);
 
-  // Reset syllable slots when question index changes
+  // Refs to avoid stale closures in continuous section timer
+  const currentQuestionIndexRef = useRef<number>(currentQuestionIndex);
+  currentQuestionIndexRef.current = currentQuestionIndex;
+  const currentWordItemRef = useRef<WordItem>(currentWordItem);
+  currentWordItemRef.current = currentWordItem;
+  const composedSyllablesRef = useRef<string[]>(composedSyllables);
+  composedSyllablesRef.current = composedSyllables;
+  const questionResultsRef = useRef<QuestionResult[]>(questionResults);
+  questionResultsRef.current = questionResults;
+
+  // Reset syllable slots when question index changes (DO NOT reset timeLeft!)
   useEffect(() => {
     const count = currentWordItem.word.length;
     setComposedSyllables(Array(count).fill(''));
     setActiveSlotIndex(0);
-    setTimeLeft(unit.timePerQuestionSeconds || 45);
     setIsAnswerChecked(false);
     setIsCorrectFeedback(false);
     questionStartTimeRef.current = Date.now();
   }, [currentQuestionIndex, currentWordItem.word]);
 
-  // Overall and question countdown timers
+  // Section Total Continuous Timer (Runs throughout the entire exam session)
   useEffect(() => {
     const timer = setInterval(() => {
       setTotalElapsedTime((prev) => prev + 1);
 
       setTimeLeft((prev) => {
         if (prev <= 1) {
-          // Time expired for this question, auto evaluate or skip
-          handleTimeExpired();
+          clearInterval(timer);
+          if (!isFinishedRef.current) {
+            isFinishedRef.current = true;
+            handleTotalTimeExpired();
+          }
           return 0;
         }
         return prev - 1;
@@ -70,11 +84,41 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [currentQuestionIndex, composedSyllables]);
+  }, []);
 
-  const handleTimeExpired = () => {
-    if (isAnswerChecked) return;
-    handleSubmitAnswer();
+  const handleTotalTimeExpired = () => {
+    const currIdx = currentQuestionIndexRef.current;
+    const currWord = currentWordItemRef.current;
+    const userAns = composedSyllablesRef.current.join('');
+    const isCorrect = userAns.trim() === currWord.word.trim();
+
+    const currResult: QuestionResult = {
+      questionNumber: currIdx + 1,
+      word: currWord.word,
+      userAnswer: userAns || '(시간 초과)',
+      isCorrect,
+      timeSpentSeconds: Math.round((Date.now() - questionStartTimeRef.current) / 1000),
+      category: currWord.category,
+      syllables: currWord.syllables,
+    };
+
+    const remainingResults: QuestionResult[] = [];
+    for (let i = currIdx + 1; i < unit.words.length; i++) {
+      const w = unit.words[i];
+      remainingResults.push({
+        questionNumber: i + 1,
+        word: w.word,
+        userAnswer: '(시간 초과 미응시)',
+        isCorrect: false,
+        timeSpentSeconds: 0,
+        category: w.category,
+        syllables: w.syllables,
+      });
+    }
+
+    const finalResults = [...questionResultsRef.current, currResult, ...remainingResults];
+    alert('시험 제한 시간이 모두 경과했습니다. 현재까지 작성된 답안으로 자동 제출됩니다.');
+    onFinishTest(finalResults, totalSectionSeconds);
   };
 
   // Pronunciation Audio (Web Speech API)
@@ -238,13 +282,14 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
 
   // Submit Answer & Move Next
   const handleSubmitAnswer = () => {
+    if (isFinishedRef.current) return;
+
     const userAnswer = composedSyllables.join('');
     const targetAnswer = currentWordItem.word;
     const isCorrect = userAnswer.trim() === targetAnswer.trim();
 
-    const timeSpentOnQuestion = Math.min(
-      unit.timePerQuestionSeconds,
-      Math.round((Date.now() - questionStartTimeRef.current) / 1000)
+    const timeSpentOnQuestion = Math.round(
+      (Date.now() - questionStartTimeRef.current) / 1000
     );
 
     const questionResult: QuestionResult = {
@@ -269,6 +314,7 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
         setCurrentQuestionIndex((prev) => prev + 1);
       } else {
         // Test complete
+        isFinishedRef.current = true;
         const totalDuration = totalElapsedTime + timeSpentOnQuestion;
         onFinishTest(nextResults, totalDuration);
       }
@@ -276,9 +322,10 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
   };
 
   const handleSkipQuestion = () => {
-    const timeSpentOnQuestion = Math.min(
-      unit.timePerQuestionSeconds,
-      Math.round((Date.now() - questionStartTimeRef.current) / 1000)
+    if (isFinishedRef.current) return;
+
+    const timeSpentOnQuestion = Math.round(
+      (Date.now() - questionStartTimeRef.current) / 1000
     );
 
     const questionResult: QuestionResult = {
@@ -297,12 +344,15 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
     if (currentQuestionIndex + 1 < unit.words.length) {
       setCurrentQuestionIndex((prev) => prev + 1);
     } else {
+      isFinishedRef.current = true;
       onFinishTest(nextResults, totalElapsedTime + timeSpentOnQuestion);
     }
   };
 
   const progressPercent = Math.round(((currentQuestionIndex + 1) / unit.words.length) * 100);
-  const formattedSeconds = timeLeft < 10 ? `0${timeLeft}` : `${timeLeft}`;
+  const minutesLeft = Math.floor(timeLeft / 60);
+  const secondsLeft = timeLeft % 60;
+  const formattedTime = `${String(minutesLeft).padStart(2, '0')}:${String(secondsLeft).padStart(2, '0')}`;
 
   return (
     <div className="w-full max-w-[720px] mx-auto px-4 sm:px-6 py-6 sm:py-8 select-none">
@@ -334,7 +384,7 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
             <div className="flex items-center gap-2">
               <div
                 className={`inline-flex items-center gap-2 px-3 py-1 rounded-full shadow-sm ${
-                  timeLeft <= 10
+                  timeLeft <= 60
                     ? 'bg-red-50 text-red-700 border border-red-200'
                     : 'bg-[#f5f3ee] text-[#171f36]'
                 }`}
@@ -342,17 +392,17 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
                 <span className="relative flex h-2 w-2">
                   <span
                     className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                      timeLeft <= 10 ? 'bg-red-500' : 'bg-[#0e6c4c]'
+                      timeLeft <= 60 ? 'bg-red-500' : 'bg-[#0e6c4c]'
                     }`}
                   />
                   <span
                     className={`relative inline-flex rounded-full h-2 w-2 ${
-                      timeLeft <= 10 ? 'bg-red-600' : 'bg-[#0e6c4c]'
+                      timeLeft <= 60 ? 'bg-red-600' : 'bg-[#0e6c4c]'
                     }`}
                   />
                 </span>
-                <span className="text-[11px] text-[#45464d] font-medium">남은 시간</span>
-                <span className="text-[13px] font-bold tabular-nums">00:{formattedSeconds}</span>
+                <span className="text-[11px] text-[#45464d] font-medium">남은 총 시간</span>
+                <span className="text-[13px] font-bold tabular-nums">{formattedTime}</span>
               </div>
 
               <button

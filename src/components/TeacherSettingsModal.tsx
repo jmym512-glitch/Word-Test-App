@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ExamUnit, TeacherSettings, TestSubmission, WordItem } from '../types';
 import { decomposeWord, formatDecompositionText } from '../lib/hangul';
 import { VOCAB_IMAGES, SEJONG_PRESET_UNITS, createWordItem } from '../data/defaultUnits';
+import { supabase, isSupabaseConfigured, DbStudent } from '../lib/supabase';
 
 interface TeacherSettingsModalProps {
   isOpen: boolean;
@@ -32,8 +33,17 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
   onSaveSettings,
   submissions,
 }) => {
-  const [activeTab, setActiveTab] = useState<'units' | 'add-unit' | 'webhook' | 'logs'>('units');
+  const [activeTab, setActiveTab] = useState<'units' | 'add-unit' | 'webhook' | 'logs' | 'students'>('units');
   const [selectedUnitId, setSelectedUnitId] = useState<string>(units[0]?.id || 'sejong-unit-1');
+
+  // 관리자 비밀번호 검증 상태 (기본: 0000)
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(false);
+  const [adminPinInput, setAdminPinInput] = useState<string>('');
+  const [adminPinError, setAdminPinError] = useState<string | null>(null);
+
+  // 학생 계정 목록 및 로딩 상태
+  const [studentsList, setStudentsList] = useState<DbStudent[]>([]);
+  const [isLoadingStudents, setIsLoadingStudents] = useState<boolean>(false);
 
   // 단원 어휘 편집용 텍스트
   const currentEditingUnit = units.find((u) => u.id === selectedUnitId) || units[0];
@@ -41,13 +51,13 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     currentEditingUnit ? currentEditingUnit.words.map((w) => w.word).join(', ') : ''
   );
   const [unitTitle, setUnitTitle] = useState<string>(currentEditingUnit?.title || '');
-  const [unitTimeSeconds, setUnitTimeSeconds] = useState<number>(currentEditingUnit?.timePerQuestionSeconds || 45);
+  const [unitTotalMinutes, setUnitTotalMinutes] = useState<number>(currentEditingUnit?.totalTimeLimitMinutes || 10);
 
   // 새 단원 추가 폼 상태
   const [newUnitNumber, setNewUnitNumber] = useState<number>(units.length + 1);
   const [newUnitTitle, setNewUnitTitle] = useState<string>('');
   const [newUnitWords, setNewUnitWords] = useState<string>('');
-  const [newUnitTime, setNewUnitTime] = useState<number>(45);
+  const [newUnitTotalMinutes, setNewUnitTotalMinutes] = useState<number>(10);
 
   // 웹훅 상태
   const [webhookUrl, setWebhookUrl] = useState<string>(
@@ -57,7 +67,141 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
   const [copiedScript, setCopiedScript] = useState<boolean>(false);
   const [testStatus, setTestStatus] = useState<string | null>(null);
 
+  // 학생 계정 목록 불러오기
+  const fetchStudents = async () => {
+    setIsLoadingStudents(true);
+    try {
+      if (isSupabaseConfigured) {
+        const { data, error } = await supabase
+          .from('students')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (!error && data) {
+          setStudentsList(data);
+        }
+      } else {
+        const stored = localStorage.getItem('daejin_users');
+        const parsed = stored ? JSON.parse(stored) : [];
+        setStudentsList(
+          parsed.map((u: any) => ({
+            student_id: u.studentId,
+            name: u.name,
+            email: u.email,
+            password: u.password,
+            course_class: '세종한국어 수강반',
+            created_at: new Date().toISOString(),
+          }))
+        );
+      }
+    } catch (err) {
+      console.error('Error fetching students:', err);
+    } finally {
+      setIsLoadingStudents(false);
+    }
+  };
+
+  // 학생 비밀번호를 '0000'으로 초기화
+  const handleResetStudentPassword = async (studentId: string, studentName: string) => {
+    if (!window.confirm(`[${studentName} (${studentId})] 학생의 비밀번호를 '0000'으로 초기화하시겠습니까?`)) {
+      return;
+    }
+
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await supabase
+          .from('students')
+          .update({ password: '0000' })
+          .eq('student_id', studentId);
+        if (error) throw error;
+      }
+
+      const stored = localStorage.getItem('daejin_users');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        const updated = parsed.map((u: any) =>
+          u.studentId === studentId ? { ...u, password: '0000' } : u
+        );
+        localStorage.setItem('daejin_users', JSON.stringify(updated));
+      }
+
+      setStudentsList((prev) =>
+        prev.map((s) => (s.student_id === studentId ? { ...s, password: '0000' } : s))
+      );
+
+      setTestStatus(`[${studentName}] 학생의 비밀번호가 '0000'으로 초기화되었습니다.`);
+      setTimeout(() => setTestStatus(null), 3500);
+    } catch (err: any) {
+      alert(`초기화 실패: ${err.message || '다시 시도해 주세요.'}`);
+    }
+  };
+
+  // 관리자 비밀번호 검증 (기본: 0000)
+  const handleVerifyAdminPin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (adminPinInput.trim() === '0000') {
+      setIsAdminAuthenticated(true);
+      setAdminPinError(null);
+    } else {
+      setAdminPinError('관리자 비밀번호가 일치하지 않습니다. (기본 비밀번호: 0000)');
+    }
+  };
+
+  const handleCloseModal = () => {
+    setIsAdminAuthenticated(false);
+    setAdminPinInput('');
+    setAdminPinError(null);
+    onClose();
+  };
+
   if (!isOpen) return null;
+
+  // 관리자 비밀번호 미인증 시 잠금 화면 표시
+  if (!isAdminAuthenticated) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 select-none">
+        <div className="w-full max-w-[380px] bg-white rounded-3xl p-6 sm:p-7 shadow-2xl border border-[#e2e8f0] flex flex-col items-center text-center">
+          <div className="w-13 h-13 rounded-2xl bg-[#0c2340] text-white flex items-center justify-center mb-3 shadow-md">
+            <span className="material-symbols-outlined text-[26px]">lock</span>
+          </div>
+          <h3 className="text-[18px] font-extrabold text-[#0c2340]">교사용 관리자 인증</h3>
+          <p className="text-xs text-[#64748b] mt-1 mb-5">
+            시험 관리 및 학생 설정에 접근하려면 관리자 비밀번호(기본: <strong>0000</strong>)를 입력해 주세요.
+          </p>
+          <form onSubmit={handleVerifyAdminPin} className="w-full flex flex-col gap-3">
+            <input
+              type="password"
+              autoFocus
+              value={adminPinInput}
+              onChange={(e) => {
+                setAdminPinInput(e.target.value);
+                setAdminPinError(null);
+              }}
+              placeholder="비밀번호 입력 (기본: 0000)"
+              className="w-full px-4 py-3 bg-[#f8fafc] text-center text-base font-bold tracking-widest text-[#0c2340] rounded-xl border border-[#e2e8f0] focus:border-[#0c2340] outline-none"
+            />
+            {adminPinError && (
+              <p className="text-xs text-red-500 font-bold">{adminPinError}</p>
+            )}
+            <div className="flex gap-2 mt-1">
+              <button
+                type="button"
+                onClick={handleCloseModal}
+                className="flex-1 py-2.5 rounded-xl bg-[#f1f5f9] text-[#64748b] text-xs font-bold hover:bg-[#e2e8f0] cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="submit"
+                className="flex-1 py-2.5 rounded-xl bg-[#0c2340] text-white text-xs font-bold hover:bg-[#163a66] transition-colors cursor-pointer"
+              >
+                확인
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   // 단원 선택 변경 시
   const handleSelectUnit = (unitId: string) => {
@@ -66,7 +210,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     if (u) {
       setWordInputText(u.words.map((w) => w.word).join(', '));
       setUnitTitle(u.title);
-      setUnitTimeSeconds(u.timePerQuestionSeconds || 45);
+      setUnitTotalMinutes(u.totalTimeLimitMinutes || 10);
     }
   };
 
@@ -98,7 +242,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     onUpdateUnitWords(currentEditingUnit.id, newWordItems);
     onUpdateUnitDetails(currentEditingUnit.id, {
       title: unitTitle.trim() || currentEditingUnit.title,
-      timePerQuestionSeconds: Number(unitTimeSeconds) || 45,
+      totalTimeLimitMinutes: Number(unitTotalMinutes) || 10,
     });
 
     setTestStatus(`[${unitTitle}] 단원 설정 및 ${newWordItems.length}개 어휘가 저장되었습니다!`);
@@ -131,7 +275,8 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
       isPublished: true, // 새로 만든 단원은 기본적으로 학생에게 게시
       status: 'available',
       questionCount: wordItems.length,
-      timePerQuestionSeconds: Number(newUnitTime) || 45,
+      timePerQuestionSeconds: 45,
+      totalTimeLimitMinutes: Number(newUnitTotalMinutes) || 10,
       wordsSummary: `${wordItems.slice(0, 3).map((w) => w.word).join(', ')} 등 ${wordItems.length}개`,
       words: wordItems,
       level: '대진대 세종한국어 맞춤 단원',
@@ -303,6 +448,22 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
               <span className="material-symbols-outlined text-[16px]">assignment</span>
               <span>성적 제출 이력 ({submissions.length}건)</span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('students');
+                fetchStudents();
+              }}
+              className={`px-4 py-3 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
+                activeTab === 'students'
+                  ? 'border-[#0c2340] text-[#0c2340]'
+                  : 'border-transparent text-[#64748b] hover:text-[#0c2340]'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[16px]">group</span>
+              <span>학생 계정 관리 & 비밀번호 초기화</span>
+            </button>
           </div>
 
           <button
@@ -395,7 +556,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                       {/* Actions */}
                       <div className="flex items-center justify-between pt-2 border-t border-[#e2e8f0] text-xs">
                         <span className="text-[11px] text-[#64748b]">
-                          {unit.words.length}문항 · 문항당 {unit.timePerQuestionSeconds}초
+                          {unit.words.length}문항 · 총 {unit.totalTimeLimitMinutes || 10}분
                         </span>
 
                         <div className="flex items-center gap-2">
@@ -458,13 +619,18 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                       />
                     </div>
                     <div className="flex flex-col gap-1">
-                      <label className="text-xs font-bold text-[#0c2340]">문항당 제한 시간 (초)</label>
-                      <input
-                        type="number"
-                        value={unitTimeSeconds}
-                        onChange={(e) => setUnitTimeSeconds(Number(e.target.value))}
-                        className="px-3 py-2 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7]"
-                      />
+                      <label className="text-xs font-bold text-[#0c2340]">총 시험 제한 시간 (5분~15분)</label>
+                      <select
+                        value={unitTotalMinutes}
+                        onChange={(e) => setUnitTotalMinutes(Number(e.target.value))}
+                        className="px-3 py-2 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7] font-semibold cursor-pointer"
+                      >
+                        {Array.from({ length: 11 }, (_, i) => i + 5).map((m) => (
+                          <option key={m} value={m}>
+                            {m}분 (총 {m * 60}초)
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
 
@@ -546,13 +712,18 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-[#0c2340]">문항당 제한 시간 (초)</label>
-                  <input
-                    type="number"
-                    value={newUnitTime}
-                    onChange={(e) => setNewUnitTime(Number(e.target.value))}
-                    className="px-3 py-2.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7]"
-                  />
+                  <label className="text-xs font-bold text-[#0c2340]">총 시험 제한 시간 (5분~15분)</label>
+                  <select
+                    value={newUnitTotalMinutes}
+                    onChange={(e) => setNewUnitTotalMinutes(Number(e.target.value))}
+                    className="px-3 py-2.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7] font-semibold cursor-pointer"
+                  >
+                    {Array.from({ length: 11 }, (_, i) => i + 5).map((m) => (
+                      <option key={m} value={m}>
+                        {m}분 (총 {m * 60}초)
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -721,6 +892,78 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                           </td>
                           <td className="p-2.5">{sub.timeSpentSeconds}초</td>
                           <td className="p-2.5 text-[#64748b]">{sub.timestamp}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 5: 학생 계정 관리 & 비밀번호 초기화 */}
+          {activeTab === 'students' && (
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-[#0c2340]">등록된 학생 계정 관리</h3>
+                  <p className="text-xs text-[#64748b]">
+                    Supabase 클라우드 DB에 가입된 학생 목록입니다. 학생이 비밀번호를 분실한 경우 <strong>'0000'</strong>으로 즉시 초기화할 수 있습니다.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={fetchStudents}
+                  className="px-3 py-1.5 bg-[#f1f5f9] hover:bg-[#e2e8f0] text-xs font-bold text-[#0c2340] rounded-xl flex items-center gap-1 transition-colors cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[16px]">refresh</span>
+                  <span>새로고침</span>
+                </button>
+              </div>
+
+              {isLoadingStudents ? (
+                <div className="py-12 text-center text-xs text-[#64748b]">
+                  학생 계정 목록을 불러오는 중입니다...
+                </div>
+              ) : studentsList.length === 0 ? (
+                <div className="py-12 text-center text-xs text-[#64748b] bg-[#f8fafc] rounded-2xl border border-[#e2e8f0]">
+                  등록된 학생 계정이 없습니다. (로그인 화면에서 회원가입을 진행해 보세요)
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-[#e2e8f0] rounded-2xl">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#f8fafc] text-[#64748b] border-b border-[#e2e8f0] font-bold">
+                      <tr>
+                        <th className="py-3 px-4">학번 (Student ID)</th>
+                        <th className="py-3 px-4">성명 (Name)</th>
+                        <th className="py-3 px-4">이메일 (Email)</th>
+                        <th className="py-3 px-4">현재 비밀번호</th>
+                        <th className="py-3 px-4">가입일시</th>
+                        <th className="py-3 px-4 text-center">비밀번호 관리</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#f1f5f9]">
+                      {studentsList.map((st) => (
+                        <tr key={st.student_id} className="hover:bg-[#f8fafc] transition-colors">
+                          <td className="py-3 px-4 font-bold text-[#0c2340]">{st.student_id}</td>
+                          <td className="py-3 px-4 font-semibold text-[#0c2340]">
+                            {st.name} {st.english_name && <span className="text-[#64748b] font-normal">({st.english_name})</span>}
+                          </td>
+                          <td className="py-3 px-4 text-[#475569]">{st.email}</td>
+                          <td className="py-3 px-4 font-mono text-[#0284c7] font-bold">{st.password || '****'}</td>
+                          <td className="py-3 px-4 text-[#64748b]">
+                            {st.created_at ? new Date(st.created_at).toLocaleDateString('ko-KR') : '-'}
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleResetStudentPassword(st.student_id, st.name)}
+                              className="px-3 py-1 bg-[#fee2e2] hover:bg-[#fecaca] text-[#b91c1c] text-[11px] font-bold rounded-lg transition-colors cursor-pointer"
+                              title="비밀번호를 '0000'으로 초기화합니다."
+                            >
+                              0000으로 초기화
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

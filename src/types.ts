@@ -27,7 +27,8 @@ export interface ExamUnit {
   isPublished: boolean; // 교사가 등록/게시한 단원인지 여부 (false면 학생 화면에 미표시)
   status: 'in_progress' | 'available' | 'completed';
   questionCount: number;
-  timePerQuestionSeconds: number;
+  timePerQuestionSeconds?: number;
+  totalTimeLimitMinutes?: number; // 영역(섹션) 총 시험 제한 시간 (5 ~ 15분, 1분 단위)
   wordsSummary: string;
   score?: number;
   completedAt?: string;
