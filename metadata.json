@@ -1,0 +1,6 @@
+{
+  "name": "대진대학교 단어 시험 (Daejin Korean Study)",
+  "description": "대진대학교 세종한국어 수강생 맞춤 자모음 결합 인터랙티브 단어 시험 시스템",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

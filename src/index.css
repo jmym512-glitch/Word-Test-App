@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-display: 'Plus Jakarta Sans', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Pretendard', sans-serif;
+    --font-body: 'Plus Jakarta Sans', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Pretendard', sans-serif;
+  }
+
+  body {
+    font-family: var(--font-body);
+    background-color: #fbf9f4;
+    color: #1b1c19;
+  }
+}
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  vertical-align: middle;
+}
+
+.material-symbols-filled {
+  font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+  vertical-align: middle;
+}
+
+/* Tactile Hangul Phoneme Keypad Styling */
+.tactile-key {
+  box-shadow: 0 3px 0 0 #d7d2c5;
+  transition: transform 0.08s ease, box-shadow 0.08s ease, background-color 0.15s ease;
+}
+
+.tactile-key:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 0 #d7d2c5;
+}
+
+.tactile-key-selected {
+  box-shadow: 0 3px 0 0 #1b2132;
+  background-color: #171f36;
+  color: #ffffff;
+}
+
+.tactile-key-correct {
+  box-shadow: 0 3px 0 0 #094732;
+  background-color: #0e6c4c;
+  color: #ffffff;
+}
