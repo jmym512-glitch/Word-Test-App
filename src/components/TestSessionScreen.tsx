@@ -1,12 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { ExamUnit, QuestionResult, WordItem } from '../types';
-import {
-  INITIAL_CONSONANTS,
-  MEDIAL_VOWELS,
-  COMPOUND_VOWELS,
-  composeSyllable,
-  decomposeSyllable,
-} from '../lib/hangul';
+import { VOCAB_IMAGES, formatPartOfSpeech, getWordDisplayImage } from '../data/defaultUnits';
+import { generateQuizBlocks, QuizBlock } from '../utils/quizDistractors';
 
 interface TestSessionScreenProps {
   unit: ExamUnit;
@@ -14,58 +9,66 @@ interface TestSessionScreenProps {
   onExit: () => void;
 }
 
-const KEYBOARD_CONSONANTS = ['ㄱ', 'ㄴ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅅ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
-const KEYBOARD_VOWELS = ['ㅏ', 'ㅑ', 'ㅓ', 'ㅕ', 'ㅗ', 'ㅛ', 'ㅜ', 'ㅠ', 'ㅡ', 'ㅣ', 'ㅐ', 'ㅔ'];
-
 export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
   unit,
   onFinishTest,
   onExit,
 }) => {
+  // 컨닝 방지: 학생이 시험을 시작할 때마다 단어 순서를 무작위로 셔플하고, 최대 10문항만 추출
+  const shuffledWords = useMemo<WordItem[]>(() => {
+    const list = [...unit.words];
+    for (let i = list.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [list[i], list[j]] = [list[j], list[i]];
+    }
+    // 어휘 풀 중 최대 10문항만 무작위 추출하여 출제
+    return list.slice(0, Math.min(10, list.length));
+  }, [unit.id, unit.words]);
+
   const totalSectionSeconds = (unit.totalTimeLimitMinutes || 10) * 60;
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
   const [timeLeft, setTimeLeft] = useState<number>(totalSectionSeconds);
   const [totalElapsedTime, setTotalElapsedTime] = useState<number>(0);
   const [questionResults, setQuestionResults] = useState<QuestionResult[]>([]);
 
-  // State of the user's composed syllables for current question
-  // Array of string per syllable box, e.g. ['사', '과']
-  const currentWordItem: WordItem = unit.words[currentQuestionIndex] || unit.words[0];
-  const syllableCount = currentWordItem.word.length;
+  const currentWordItem: WordItem = shuffledWords[currentQuestionIndex] || shuffledWords[0];
+  const targetWord = currentWordItem.word;
 
-  const [composedSyllables, setComposedSyllables] = useState<string[]>(() =>
-    Array(syllableCount).fill('')
-  );
-  const [activeSlotIndex, setActiveSlotIndex] = useState<number>(0);
+  // 현재 문항의 힌트 블록 및 선택 상태
+  const [quizBlocks, setQuizBlocks] = useState<QuizBlock[]>([]);
+  const [selectedBlockIds, setSelectedBlockIds] = useState<string[]>([]);
+  const [typedAnswer, setTypedAnswer] = useState<string>('');
+
+  // 채점 피드백 상태
   const [isAnswerChecked, setIsAnswerChecked] = useState<boolean>(false);
   const [isCorrectFeedback, setIsCorrectFeedback] = useState<boolean>(false);
-  const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
 
-  // Time taken on current question
+  // 문항 풀이 소요 시간
   const questionStartTimeRef = useRef<number>(Date.now());
   const isFinishedRef = useRef<boolean>(false);
 
-  // Refs to avoid stale closures in continuous section timer
   const currentQuestionIndexRef = useRef<number>(currentQuestionIndex);
   currentQuestionIndexRef.current = currentQuestionIndex;
   const currentWordItemRef = useRef<WordItem>(currentWordItem);
   currentWordItemRef.current = currentWordItem;
-  const composedSyllablesRef = useRef<string[]>(composedSyllables);
-  composedSyllablesRef.current = composedSyllables;
+  const typedAnswerRef = useRef<string>(typedAnswer);
+  typedAnswerRef.current = typedAnswer;
   const questionResultsRef = useRef<QuestionResult[]>(questionResults);
   questionResultsRef.current = questionResults;
 
-  // Reset syllable slots when question index changes (DO NOT reset timeLeft!)
+  // 문항이 변경될 때마다 힌트 블록 새로 생성 및 상태 초기화
   useEffect(() => {
-    const count = currentWordItem.word.length;
-    setComposedSyllables(Array(count).fill(''));
-    setActiveSlotIndex(0);
+    const allWordStrings = shuffledWords.map((w) => w.word);
+    const blocks = generateQuizBlocks(targetWord, allWordStrings);
+    setQuizBlocks(blocks);
+    setSelectedBlockIds([]);
+    setTypedAnswer('');
     setIsAnswerChecked(false);
     setIsCorrectFeedback(false);
     questionStartTimeRef.current = Date.now();
-  }, [currentQuestionIndex, currentWordItem.word]);
+  }, [currentQuestionIndex, targetWord, shuffledWords]);
 
-  // Section Total Continuous Timer (Runs throughout the entire exam session)
+  // 지속형 섹션 타이머 (문제가 넘어가도 누적 차감)
   useEffect(() => {
     const timer = setInterval(() => {
       setTotalElapsedTime((prev) => prev + 1);
@@ -86,11 +89,12 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
     return () => clearInterval(timer);
   }, []);
 
+  // 총 시간 초과 시 자동 채점 및 종료
   const handleTotalTimeExpired = () => {
     const currIdx = currentQuestionIndexRef.current;
     const currWord = currentWordItemRef.current;
-    const userAns = composedSyllablesRef.current.join('');
-    const isCorrect = userAns.trim() === currWord.word.trim();
+    const userAns = typedAnswerRef.current.trim();
+    const isCorrect = userAns === currWord.word.trim();
 
     const currResult: QuestionResult = {
       questionNumber: currIdx + 1,
@@ -103,8 +107,8 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
     };
 
     const remainingResults: QuestionResult[] = [];
-    for (let i = currIdx + 1; i < unit.words.length; i++) {
-      const w = unit.words[i];
+    for (let i = currIdx + 1; i < shuffledWords.length; i++) {
+      const w = shuffledWords[i];
       remainingResults.push({
         questionNumber: i + 1,
         word: w.word,
@@ -121,238 +125,103 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
     onFinishTest(finalResults, totalSectionSeconds);
   };
 
-  // Pronunciation Audio (Web Speech API)
-  const handlePlaySpeech = () => {
-    if (!('speechSynthesis' in window)) return;
-    try {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(currentWordItem.word);
-      utterance.lang = 'ko-KR';
-      utterance.rate = 0.85;
-      setIsPlayingAudio(true);
-      utterance.onend = () => setIsPlayingAudio(false);
-      utterance.onerror = () => setIsPlayingAudio(false);
-      window.speechSynthesis.speak(utterance);
-    } catch {
-      setIsPlayingAudio(false);
-    }
-  };
-
-  // Phoneme Input Handling
-  const handleInputPhoneme = useCallback(
-    (phoneme: string) => {
+  // 힌트 블록 선택
+  const handleSelectBlock = useCallback(
+    (block: QuizBlock) => {
       if (isAnswerChecked) return;
+      if (selectedBlockIds.includes(block.id)) return;
+      if (typedAnswer.length >= targetWord.length) return;
 
-      setComposedSyllables((prev) => {
-        const next = [...prev];
-        const currentSlotValue = next[activeSlotIndex] || '';
-        const targetSyllableDecomp = currentWordItem.syllables[activeSlotIndex];
-
-        // Is phoneme a consonant?
-        const isConsonant = KEYBOARD_CONSONANTS.includes(phoneme) || INITIAL_CONSONANTS.includes(phoneme);
-
-        if (isConsonant) {
-          if (!currentSlotValue) {
-            // Empty slot: put initial consonant
-            next[activeSlotIndex] = phoneme;
-          } else {
-            // Check if slot has a decomposed syllable
-            const decomp = decomposeSyllable(currentSlotValue);
-            if (!decomp.medial) {
-              // Only initial consonant was there: replace with new consonant
-              next[activeSlotIndex] = phoneme;
-            } else if (!decomp.final) {
-              // Has initial + medial (e.g. '사'), let's check if target syllable has a batchim
-              if (targetSyllableDecomp && targetSyllableDecomp.final) {
-                // Compose with final consonant
-                next[activeSlotIndex] = composeSyllable(decomp.initial, decomp.medial, phoneme);
-                // If this completed the target syllable with final, move to next slot!
-                if (activeSlotIndex < syllableCount - 1) {
-                  setActiveSlotIndex(activeSlotIndex + 1);
-                }
-              } else {
-                // Target has no final batchim! This consonant belongs to the next syllable!
-                if (activeSlotIndex < syllableCount - 1) {
-                  const nextIndex = activeSlotIndex + 1;
-                  next[nextIndex] = phoneme;
-                  setActiveSlotIndex(nextIndex);
-                }
-              }
-            } else {
-              // Has final consonant already, move to next slot
-              if (activeSlotIndex < syllableCount - 1) {
-                const nextIndex = activeSlotIndex + 1;
-                next[nextIndex] = phoneme;
-                setActiveSlotIndex(nextIndex);
-              }
-            }
-          }
-        } else {
-          // Phoneme is a vowel
-          if (!currentSlotValue) {
-            // No initial consonant: in Korean standard tests, students might type vowel directly or ㅇ is omitted
-            // For friendly UX, treat as initial 'ㅇ' or just raw vowel
-            next[activeSlotIndex] = phoneme;
-          } else {
-            const decomp = decomposeSyllable(currentSlotValue);
-            if (!decomp.medial) {
-              // We had initial consonant (e.g. 'ㅅ' or 'ㄱ'): compose into syllable!
-              const composed = composeSyllable(decomp.initial, phoneme);
-              next[activeSlotIndex] = composed;
-
-              // If target syllable has NO final consonant (e.g. '사'), advance to next slot!
-              if (targetSyllableDecomp && !targetSyllableDecomp.final && activeSlotIndex < syllableCount - 1) {
-                setActiveSlotIndex(activeSlotIndex + 1);
-              }
-            } else if (!decomp.final) {
-              // Compound vowel check: e.g. ㅗ + ㅏ -> ㅘ, ㅜ + ㅓ -> ㅝ
-              const combinedKey = `${decomp.medial}${phoneme}`;
-              if (COMPOUND_VOWELS[combinedKey]) {
-                const newCompound = COMPOUND_VOWELS[combinedKey];
-                next[activeSlotIndex] = composeSyllable(decomp.initial, newCompound);
-                if (targetSyllableDecomp && !targetSyllableDecomp.final && activeSlotIndex < syllableCount - 1) {
-                  setActiveSlotIndex(activeSlotIndex + 1);
-                }
-              }
-            }
-          }
-        }
-
-        return next;
-      });
+      setSelectedBlockIds((prev) => [...prev, block.id]);
+      setTypedAnswer((prev) => prev + block.char);
     },
-    [activeSlotIndex, currentWordItem, isAnswerChecked, syllableCount]
+    [isAnswerChecked, selectedBlockIds, typedAnswer.length, targetWord.length]
   );
 
-  // Erase one phoneme (한 음운 지우기)
-  const handleBackspace = () => {
+  // 한 글자 지우기 (백스페이스)
+  const handleBackspace = useCallback(() => {
+    if (isAnswerChecked || typedAnswer.length === 0) return;
+    setSelectedBlockIds((prev) => prev.slice(0, -1));
+    setTypedAnswer((prev) => prev.slice(0, -1));
+  }, [isAnswerChecked, typedAnswer.length]);
+
+  // 전체 지우기
+  const handleClearAll = useCallback(() => {
     if (isAnswerChecked) return;
+    setSelectedBlockIds([]);
+    setTypedAnswer('');
+  }, [isAnswerChecked]);
 
-    setComposedSyllables((prev) => {
-      const next = [...prev];
-      const current = next[activeSlotIndex];
+  // 답안 제출 및 다음 문항 진행
+  const handleCheckAnswer = useCallback(() => {
+    if (isAnswerChecked || typedAnswer.trim().length === 0) return;
 
-      if (current) {
-        const decomp = decomposeSyllable(current);
-        if (decomp.final) {
-          // Remove final consonant
-          next[activeSlotIndex] = composeSyllable(decomp.initial, decomp.medial);
-        } else if (decomp.medial) {
-          // Remove medial vowel, revert to initial consonant
-          next[activeSlotIndex] = decomp.initial;
-        } else {
-          // Remove initial consonant
-          next[activeSlotIndex] = '';
-        }
-      } else if (activeSlotIndex > 0) {
-        // Move back to previous slot
-        setActiveSlotIndex(activeSlotIndex - 1);
-      }
-      return next;
-    });
-  };
+    const isCorrect = typedAnswer.trim() === targetWord.trim();
+    setIsAnswerChecked(true);
+    setIsCorrectFeedback(isCorrect);
 
-  // Clear all
-  const handleClearAll = () => {
-    if (isAnswerChecked) return;
-    setComposedSyllables(Array(syllableCount).fill(''));
-    setActiveSlotIndex(0);
-  };
+    const timeSpentOnQuestion = Math.max(1, Math.round((Date.now() - questionStartTimeRef.current) / 1000));
 
-  // Keyboard listeners for native input
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Backspace') {
-        e.preventDefault();
-        handleBackspace();
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        handleSubmitAnswer();
-      } else {
-        const key = e.key;
-        if (KEYBOARD_CONSONANTS.includes(key) || KEYBOARD_VOWELS.includes(key)) {
-          handleInputPhoneme(key);
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleBackspace, handleInputPhoneme]);
-
-  // Submit Answer & Move Next
-  const handleSubmitAnswer = () => {
-    if (isFinishedRef.current) return;
-
-    const userAnswer = composedSyllables.join('');
-    const targetAnswer = currentWordItem.word;
-    const isCorrect = userAnswer.trim() === targetAnswer.trim();
-
-    const timeSpentOnQuestion = Math.round(
-      (Date.now() - questionStartTimeRef.current) / 1000
-    );
-
-    const questionResult: QuestionResult = {
+    const result: QuestionResult = {
       questionNumber: currentQuestionIndex + 1,
-      word: targetAnswer,
-      userAnswer: userAnswer || '(미입력)',
+      word: currentWordItem.word,
+      userAnswer: typedAnswer.trim(),
       isCorrect,
       timeSpentSeconds: timeSpentOnQuestion,
       category: currentWordItem.category,
       syllables: currentWordItem.syllables,
     };
 
-    setIsAnswerChecked(true);
-    setIsCorrectFeedback(isCorrect);
-
-    // If correct, show momentary celebration state then advance
-    setTimeout(() => {
-      const nextResults = [...questionResults, questionResult];
-      setQuestionResults(nextResults);
-
-      if (currentQuestionIndex + 1 < unit.words.length) {
-        setCurrentQuestionIndex((prev) => prev + 1);
-      } else {
-        // Test complete
-        isFinishedRef.current = true;
-        const totalDuration = totalElapsedTime + timeSpentOnQuestion;
-        onFinishTest(nextResults, totalDuration);
-      }
-    }, 700);
-  };
-
-  const handleSkipQuestion = () => {
-    if (isFinishedRef.current) return;
-
-    const timeSpentOnQuestion = Math.round(
-      (Date.now() - questionStartTimeRef.current) / 1000
-    );
-
-    const questionResult: QuestionResult = {
-      questionNumber: currentQuestionIndex + 1,
-      word: currentWordItem.word,
-      userAnswer: '(건너뜀)',
-      isCorrect: false,
-      timeSpentSeconds: timeSpentOnQuestion,
-      category: currentWordItem.category,
-      syllables: currentWordItem.syllables,
-    };
-
-    const nextResults = [...questionResults, questionResult];
+    const nextResults = [...questionResults, result];
     setQuestionResults(nextResults);
 
-    if (currentQuestionIndex + 1 < unit.words.length) {
-      setCurrentQuestionIndex((prev) => prev + 1);
-    } else {
-      isFinishedRef.current = true;
-      onFinishTest(nextResults, totalElapsedTime + timeSpentOnQuestion);
-    }
-  };
+    // 0.8초 후 다음 문항 또는 결과 화면으로 전환
+    setTimeout(() => {
+      if (currentQuestionIndex < shuffledWords.length - 1) {
+        setCurrentQuestionIndex((prev) => prev + 1);
+      } else {
+        isFinishedRef.current = true;
+        onFinishTest(nextResults, totalElapsedTime + timeSpentOnQuestion);
+      }
+    }, 850);
+  }, [
+    isAnswerChecked,
+    typedAnswer,
+    targetWord,
+    currentQuestionIndex,
+    currentWordItem,
+    questionResults,
+    shuffledWords.length,
+    onFinishTest,
+    totalElapsedTime,
+  ]);
 
-  const progressPercent = Math.round(((currentQuestionIndex + 1) / unit.words.length) * 100);
+  // 물리 키보드 단축키 지원 (Backspace로 지우기, Enter로 제출)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isAnswerChecked) return;
+      if (e.key === 'Backspace') {
+        e.preventDefault();
+        handleBackspace();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (typedAnswer.trim().length > 0) {
+          handleCheckAnswer();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [typedAnswer, isAnswerChecked, handleBackspace, handleCheckAnswer]);
+
+  const progressPercent = Math.round(((currentQuestionIndex + 1) / shuffledWords.length) * 100);
   const minutesLeft = Math.floor(timeLeft / 60);
   const secondsLeft = timeLeft % 60;
   const formattedTime = `${String(minutesLeft).padStart(2, '0')}:${String(secondsLeft).padStart(2, '0')}`;
+
+  const displayImageUrl = getWordDisplayImage(currentWordItem.word, currentWordItem.imageUrl);
+  const displayPartOfSpeech = formatPartOfSpeech(currentWordItem.partOfSpeech);
+  const displayEnglishMeaning = currentWordItem.englishMeaning || currentWordItem.meaning.split('·')[0].trim();
 
   return (
     <div className="w-full max-w-[720px] mx-auto px-4 sm:px-6 py-6 sm:py-8 select-none">
@@ -369,47 +238,36 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
 
           <div className="flex items-center justify-between pt-1">
             {/* Question Counter Pill */}
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#eae8e3] text-[#1b1c19] rounded-full shadow-sm">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#eae8e3] text-[#1b1c19] rounded-full shadow-xs">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-[#45464d]">
-                단어 평가
+                Stage {unit.unitNumber || 1}
               </span>
               <span className="w-1 h-1 rounded-full bg-[#76767e]" />
               <span className="text-[13px] font-bold text-[#171f36]">
-                문제 {String(currentQuestionIndex + 1).padStart(2, '0')}{' '}
-                <span className="text-[#45464d] font-normal">/ {unit.words.length}</span>
+                문항 {currentQuestionIndex + 1} / {shuffledWords.length}
               </span>
             </div>
 
             {/* Right actions: Timer & Exit */}
             <div className="flex items-center gap-2">
               <div
-                className={`inline-flex items-center gap-2 px-3 py-1 rounded-full shadow-sm ${
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full font-mono text-[13px] font-bold tracking-tight shadow-xs border transition-colors ${
                   timeLeft <= 60
-                    ? 'bg-red-50 text-red-700 border border-red-200'
-                    : 'bg-[#f5f3ee] text-[#171f36]'
+                    ? 'bg-red-50 text-red-600 border-red-200 animate-pulse'
+                    : 'bg-[#f4f3ef] text-[#1b1c19] border-[#e2e0d8]'
                 }`}
               >
-                <span className="relative flex h-2 w-2">
-                  <span
-                    className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                      timeLeft <= 60 ? 'bg-red-500' : 'bg-[#0e6c4c]'
-                    }`}
-                  />
-                  <span
-                    className={`relative inline-flex rounded-full h-2 w-2 ${
-                      timeLeft <= 60 ? 'bg-red-600' : 'bg-[#0e6c4c]'
-                    }`}
-                  />
+                <span className="material-symbols-outlined text-[15px] text-[#0e6c4c]">
+                  timer
                 </span>
-                <span className="text-[11px] text-[#45464d] font-medium">남은 총 시간</span>
-                <span className="text-[13px] font-bold tabular-nums">{formattedTime}</span>
+                <span>{formattedTime}</span>
               </div>
 
               <button
                 type="button"
                 onClick={onExit}
-                title="단원 목록으로 나가기"
-                className="w-8 h-8 rounded-full flex items-center justify-center text-[#76767e] hover:text-[#171f36] hover:bg-[#eae8e3] transition-colors"
+                title="시험 종료 및 단원 선택으로 돌아가기"
+                className="w-8 h-8 rounded-full bg-[#f4f3ef] hover:bg-[#e4e2dd] border border-[#e2e0d8] text-[#5e5e66] flex items-center justify-center transition-all cursor-pointer shadow-xs"
               >
                 <span className="material-symbols-outlined text-[18px]">close</span>
               </button>
@@ -417,207 +275,144 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
           </div>
         </div>
 
-        {/* Main Focus Container */}
-        <div className="w-full flex flex-col items-center gap-5">
-          {/* AI Illustration Card with Tactile Hanji Aesthetic */}
-          <div className="relative w-full max-w-[380px] aspect-[4/3] rounded-2xl overflow-hidden bg-white shadow-md border border-[#e2e8f0] flex items-center justify-center group">
-            <img
-              src={currentWordItem.imageUrl}
-              alt={currentWordItem.word}
-              className="w-full h-full object-cover select-none transition-transform duration-500 group-hover:scale-105"
-            />
-            {/* Subtle Visual Scrim for Focus */}
-            <div className="absolute inset-0 bg-gradient-to-t from-[#0c2340]/40 via-transparent to-transparent pointer-events-none" />
+        {/* 1. 단서 카드 (Clue Card: 품사 + 영문 의미 + 글자 수 + 직관적 이미지) */}
+        <div className="w-full flex flex-col items-center gap-4">
+          <div className="w-full max-w-[440px] bg-white rounded-3xl p-4 sm:p-5 border border-[#e2e8f0] shadow-sm flex flex-col items-center gap-3">
+            {/* Top Bar: 품사 뱃지 & 영문 의미 + 글자 수 */}
+            <div className="w-full flex items-center justify-between px-1">
+              <span className="px-3.5 py-1.5 rounded-full bg-[#f0f9ff] text-[#0284c7] text-[13.5px] sm:text-[14px] font-black border border-[#bae6fd] tracking-tight shadow-2xs">
+                {displayPartOfSpeech}
+              </span>
 
-            {/* Visual Clue Badge */}
-            <div className="absolute top-2.5 right-2.5 px-2.5 py-0.5 rounded-lg bg-white/90 backdrop-blur-sm text-[#0c2340] text-[11px] font-bold shadow-sm select-none border border-black/5">
-              {currentWordItem.category || '세종한국어 어휘'}
+              <div className="flex items-center gap-2">
+                <span className="text-[16px] sm:text-[17px] font-black text-[#0c2340] tracking-tight">
+                  Meaning: <span className="text-[#0284c7]">{displayEnglishMeaning}</span>
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-[#f1f5f9] text-[#475569] text-xs font-extrabold border border-[#e2e8f0]">
+                  {targetWord.length}글자
+                </span>
+              </div>
             </div>
 
-            {/* Audio Speech Helper Button */}
-            <button
-              type="button"
-              onClick={handlePlaySpeech}
-              title="발음 듣기"
-              className={`absolute bottom-2.5 left-2.5 px-3 py-1.5 rounded-xl bg-white/95 hover:bg-white text-[#0c2340] text-[12px] font-bold shadow-md flex items-center gap-1.5 transition-all cursor-pointer ${
-                isPlayingAudio ? 'ring-2 ring-[#0284c7]' : ''
+            {/* Intuitive Image Card (4:3 비율 고화질 일러스트) */}
+            <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-[#f8fafc] border border-[#e2e8f0] flex items-center justify-center group shadow-2xs">
+              <img
+                src={displayImageUrl}
+                alt={displayEnglishMeaning}
+                className="w-full h-full object-cover select-none transition-transform duration-500 group-hover:scale-105"
+                loading="eager"
+              />
+            </div>
+          </div>
+
+          {/* 2. 답안 입력 트레이 (단어를 입력하세요) */}
+          <div className="w-full max-w-[440px] mt-1">
+            <div
+              className={`w-full h-16 sm:h-18 rounded-2xl border-2 flex items-center justify-center px-4 transition-all ${
+                isAnswerChecked
+                  ? isCorrectFeedback
+                    ? 'border-[#15803d] bg-[#f0fdf4] text-[#15803d]'
+                    : 'border-[#dc2626] bg-red-50 text-[#dc2626]'
+                  : typedAnswer.length > 0
+                  ? 'border-[#0e6c4c] bg-white shadow-sm'
+                  : 'border-[#38bdf8] bg-white/80'
               }`}
             >
-              <span className="material-symbols-outlined text-[17px] text-[#0284c7]">
-                volume_up
-              </span>
-              <span>발음 청취</span>
-            </button>
-          </div>
-
-          {/* Adult Learner Word Helper (English Meaning, Part of Speech, Context Hint) */}
-          <div className="w-full max-w-[420px] bg-white rounded-2xl p-3.5 border border-[#e2e8f0] shadow-sm flex flex-col items-center text-center gap-1.5">
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded-full bg-[#f0f9ff] text-[#0284c7] text-[11px] font-bold border border-[#bae6fd]">
-                {currentWordItem.partOfSpeech || '명사'}
-              </span>
-              <span className="text-[14px] font-bold text-[#0c2340]">
-                {currentWordItem.englishMeaning || currentWordItem.meaning}
-              </span>
-            </div>
-            {currentWordItem.clueHint && (
-              <span className="text-[12px] text-[#64748b]">
-                힌트: {currentWordItem.clueHint}
-              </span>
-            )}
-            {currentWordItem.exampleSentence && (
-              <div className="text-[11px] text-[#475569] bg-[#f8fafc] px-3 py-1 rounded-lg mt-0.5 border border-[#e2e8f0]">
-                예문: <strong>{currentWordItem.exampleSentence}</strong>
-              </div>
-            )}
-          </div>
-
-          {/* Letter Blocks (Answer Syllable Trays) */}
-          <div className="flex flex-col items-center gap-3 w-full">
-            <div className="flex items-center justify-center gap-3 sm:gap-4 flex-wrap">
-              {Array.from({ length: syllableCount }).map((_, idx) => {
-                const char = composedSyllables[idx] || '';
-                const isActive = activeSlotIndex === idx;
-                const isFilled = char.length > 0;
-
-                let boxBg = 'bg-white';
-                let textColor = 'text-[#0c2340]';
-                let borderStyle = 'border border-[#e2e8f0]';
-
-                if (isAnswerChecked && isCorrectFeedback) {
-                  boxBg = 'bg-[#15803d] text-white';
-                  textColor = 'text-white';
-                } else if (isActive) {
-                  boxBg = 'bg-[#f0f9ff]';
-                  borderStyle = 'border-2 border-[#0284c7] shadow-sm';
-                } else if (isFilled) {
-                  boxBg = 'bg-white';
-                  borderStyle = 'border border-[#94a3b8] shadow-sm';
-                }
-
-                return (
-                  <div
-                    key={idx}
-                    onClick={() => setActiveSlotIndex(idx)}
-                    className={`relative w-20 h-24 sm:w-24 sm:h-28 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all ${boxBg} ${borderStyle}`}
-                  >
+              {typedAnswer.length === 0 ? (
+                <span className="text-[#94a3b8] text-sm sm:text-base font-semibold">
+                  단어를 입력하세요 (예: {targetWord.length}글자)
+                </span>
+              ) : (
+                <div className="flex items-center justify-center gap-2 tracking-widest">
+                  {typedAnswer.split('').map((char, idx) => (
                     <span
-                      className={`text-[42px] sm:text-[48px] font-bold leading-none pt-1 ${textColor} ${
-                        isActive && !isFilled ? 'animate-pulse text-[#94a3b8]' : ''
-                      }`}
+                      key={idx}
+                      onClick={handleBackspace}
+                      title="클릭하여 마지막 글자 지우기"
+                      className="text-2xl sm:text-3xl font-black text-[#0c2340] cursor-pointer hover:text-red-500 transition-colors"
                     >
-                      {char || (isActive ? '·' : '')}
+                      {char}
                     </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
 
-                    {/* Active underline indicator */}
-                    {isActive && (
-                      <div className="absolute bottom-3 w-7 h-1 bg-[#0284c7] rounded-full" />
-                    )}
+          {/* 3. 힌트 글자 블록 영역 (터치하여 입력 & 지우기) */}
+          <div className="w-full max-w-[440px] mt-2 flex flex-col gap-2.5">
+            {/* Header: 라벨 & 지우기 버튼 */}
+            <div className="w-full flex items-center justify-between px-1">
+              <div className="flex items-center gap-1.5 text-xs sm:text-[13px] font-bold text-[#64748b]">
+                <span className="material-symbols-outlined text-[16px] text-[#0284c7]">
+                  touch_app
+                </span>
+                <span>힌트 글자 블록 (터치하여 입력)</span>
+              </div>
 
-                    <span className="absolute bottom-1.5 text-[10px] sm:text-[11px] font-semibold text-[#94a3b8] tracking-wider uppercase">
-                      {idx + 1}음절
-                    </span>
-                  </div>
+              <div className="flex items-center gap-2">
+                {typedAnswer.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearAll}
+                    className="text-xs text-[#94a3b8] hover:text-[#475569] font-semibold transition-colors cursor-pointer"
+                  >
+                    전체삭제
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleBackspace}
+                  disabled={typedAnswer.length === 0 || isAnswerChecked}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    typedAnswer.length > 0 && !isAnswerChecked
+                      ? 'bg-[#f1f5f9] hover:bg-[#e2e8f0] text-[#0c2340]'
+                      : 'opacity-40 cursor-not-allowed text-[#94a3b8]'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[15px]">backspace</span>
+                  <span>지우기</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Interactive Syllable Blocks Flex / Grid */}
+            <div className="w-full flex items-center justify-center gap-2.5 sm:gap-3 flex-wrap p-3 rounded-2xl bg-[#f8fafc] border border-[#e2e8f0]">
+              {quizBlocks.map((block) => {
+                const isSelected = selectedBlockIds.includes(block.id);
+                return (
+                  <button
+                    key={block.id}
+                    type="button"
+                    onClick={() => handleSelectBlock(block)}
+                    disabled={isSelected || isAnswerChecked}
+                    className={`min-w-[56px] h-14 sm:min-w-[62px] sm:h-16 px-3 rounded-2xl font-black text-xl sm:text-2xl transition-all shadow-xs cursor-pointer flex items-center justify-center ${
+                      isSelected
+                        ? 'opacity-25 bg-[#e2e8f0] text-[#94a3b8] border-2 border-dashed border-[#cbd5e1] scale-95 cursor-not-allowed'
+                        : 'bg-white border-2 border-[#e2e8f0] hover:border-[#0284c7] hover:shadow-md active:scale-95 text-[#0c2340]'
+                    }`}
+                  >
+                    {block.char}
+                  </button>
                 );
               })}
             </div>
-
-            {/* Utility Controls */}
-            <div className="flex items-center justify-center gap-2 pt-1">
-              <button
-                type="button"
-                onClick={handleBackspace}
-                className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-xl bg-white hover:bg-[#f1f5f9] active:translate-y-0.5 text-[#475569] text-[12px] font-bold transition-all border border-[#e2e8f0] shadow-sm cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[16px]">backspace</span>
-                <span>한 음운 지우기</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleClearAll}
-                className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-xl bg-white hover:bg-[#fee2e2] active:translate-y-0.5 text-[#64748b] hover:text-[#dc2626] text-[12px] font-bold transition-all border border-[#e2e8f0] shadow-sm cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[16px]">restart_alt</span>
-                <span>초기화</span>
-              </button>
-            </div>
           </div>
 
-          {/* Tactile Hangul Phoneme Keypad Matrix */}
-          <div className="w-full bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-[#e2e8f0] flex flex-col gap-4">
-            {/* Consonants Section (자음 14자) */}
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[12px] font-bold text-[#0c2340] tracking-wider uppercase flex items-center gap-1">
-                  <span>자음 (CONSONANTS)</span>
-                  <span className="text-[10px] text-[#64748b] font-normal">초성·종성 받침</span>
-                </span>
-                <span className="text-[11px] font-semibold text-[#64748b]">14자</span>
-              </div>
-              <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
-                {KEYBOARD_CONSONANTS.map((consonant) => (
-                  <button
-                    key={consonant}
-                    type="button"
-                    onClick={() => handleInputPhoneme(consonant)}
-                    className="h-11 sm:h-12 bg-[#f8fafc] hover:bg-[#e2e8f0] active:bg-[#0c2340] active:text-white rounded-xl text-[20px] sm:text-[22px] font-bold text-[#0c2340] flex items-center justify-center tactile-key cursor-pointer border border-[#e2e8f0] transition-colors"
-                  >
-                    {consonant}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Vowels Section (모음 12자) */}
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[12px] font-bold text-[#0c2340] tracking-wider uppercase flex items-center gap-1">
-                  <span>모음 (VOWELS)</span>
-                  <span className="text-[10px] text-[#64748b] font-normal">중성 모음</span>
-                </span>
-                <span className="text-[11px] font-semibold text-[#64748b]">12자</span>
-              </div>
-              <div className="grid grid-cols-6 gap-1.5 sm:gap-2">
-                {KEYBOARD_VOWELS.map((vowel) => (
-                  <button
-                    key={vowel}
-                    type="button"
-                    onClick={() => handleInputPhoneme(vowel)}
-                    className="h-11 sm:h-12 bg-[#f8fafc] hover:bg-[#e2e8f0] active:bg-[#0c2340] active:text-white rounded-xl text-[20px] sm:text-[22px] font-bold text-[#0c2340] flex items-center justify-center tactile-key cursor-pointer border border-[#e2e8f0] transition-colors"
-                  >
-                    {vowel}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom Actions Deck */}
-          <div className="w-full flex items-center justify-between gap-3 pt-1">
+          {/* 4. 하단 Check 채점 버튼 (레퍼런스 스타일) */}
+          <div className="w-full max-w-[440px] flex items-center justify-end mt-1">
             <button
               type="button"
-              onClick={handleSkipQuestion}
-              className="h-12 px-5 rounded-xl bg-white hover:bg-[#f1f5f9] text-[#64748b] font-bold text-[14px] transition-all cursor-pointer border border-[#e2e8f0]"
-            >
-              건너뛰기
-            </button>
-
-            <button
-              type="button"
-              onClick={handleSubmitAnswer}
-              className={`h-12 px-8 flex-1 sm:flex-initial rounded-xl text-white font-bold text-[15px] shadow-md hover:shadow-lg active:translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                isAnswerChecked && isCorrectFeedback
-                  ? 'bg-[#15803d]'
-                  : 'bg-[#0c2340] hover:bg-[#163a66]'
+              onClick={handleCheckAnswer}
+              disabled={typedAnswer.trim().length === 0 || isAnswerChecked}
+              className={`px-8 py-3 rounded-2xl font-extrabold text-sm sm:text-base flex items-center gap-2 transition-all shadow-sm cursor-pointer ${
+                typedAnswer.trim().length > 0 && !isAnswerChecked
+                  ? 'bg-[#0e6c4c] hover:bg-[#0b543b] text-white active:scale-95 shadow-md'
+                  : 'bg-[#e2e8f0] text-[#94a3b8] cursor-not-allowed'
               }`}
             >
-              <span>
-                {isAnswerChecked && isCorrectFeedback
-                  ? '정답입니다! 다음 문제로'
-                  : '정답 확인 및 다음'}
-              </span>
-              <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+              <span>Check</span>
+              <span className="material-symbols-outlined text-[18px]">check</span>
             </button>
           </div>
         </div>

@@ -6,8 +6,9 @@ import {
   TeacherSettings,
   TestSubmission,
   WordItem,
+  CourseCategory,
 } from './types';
-import { INITIAL_UNITS, SEJONG_PRESET_UNITS } from './data/defaultUnits';
+import { INITIAL_UNITS, SEJONG_PRESET_UNITS, saveCustomVocabImage } from './data/defaultUnits';
 import { Header } from './components/Header';
 import { LoginScreen } from './components/LoginScreen';
 import { UnitSelectScreen } from './components/UnitSelectScreen';
@@ -16,6 +17,8 @@ import { TestResultScreen } from './components/TestResultScreen';
 import { TeacherSettingsModal } from './components/TeacherSettingsModal';
 import { VocabBookModal } from './components/VocabBookModal';
 import { StudyRecordsModal } from './components/StudyRecordsModal';
+import { supabase, isSupabaseConfigured } from './lib/supabase';
+import { getEffectiveWebhookUrl } from './config';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<
@@ -23,20 +26,53 @@ export default function App() {
   >('login');
 
   // 현재 로그인된 세종한국어 수강생 프로필
-  const [student, setStudent] = useState<LearnerProfile | null>({
-    studentId: '20261042',
-    name: '마이클 첸',
-    englishName: 'Michael Chen',
-    courseClass: '세종한국어 1급 A반',
-    institution: '대진대학교 국제교류원 한국어교육센터',
-    nationality: '미국',
+  const [student, setStudent] = useState<LearnerProfile | null>(() => {
+    try {
+      const stored = localStorage.getItem('daejin_current_student');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        // 이전 테스트 기본값(마이클 첸/20261042)이 남아있을 경우 현재 사용자(최재민/20100042)로 갱신
+        if (parsed.name === '마이클 첸' || parsed.studentId === '20261042') {
+          const updated: LearnerProfile = {
+            studentId: '20100042',
+            name: '최재민',
+            englishName: 'Jaemin Choi',
+            courseClass: parsed.courseClass || '1A 한국어',
+            institution: '대진대학교 국제교류원 한국어교육센터',
+            nationality: '대한민국',
+            gradeClass: parsed.gradeClass || '1A 한국어',
+            school: '대진대학교 국제교류원 한국어교육센터',
+          };
+          localStorage.setItem('daejin_current_student', JSON.stringify(updated));
+          return updated;
+        }
+        return parsed;
+      }
+    } catch {}
+    return {
+      studentId: '20100042',
+      name: '최재민',
+      englishName: 'Jaemin Choi',
+      courseClass: '1A 한국어',
+      institution: '대진대학교 국제교류원 한국어교육센터',
+      nationality: '대한민국',
+      gradeClass: '1A 한국어',
+      school: '대진대학교 국제교류원 한국어교육센터',
+    };
   });
 
-  // 단원 목록 (로컬스토리지 연동)
+  // 단원 목록 (로컬스토리지 연동 및 대분류 카테고리 보정)
   const [units, setUnits] = useState<ExamUnit[]>(() => {
     try {
       const stored = localStorage.getItem('daejin_units');
-      return stored ? JSON.parse(stored) : INITIAL_UNITS;
+      if (stored) {
+        const parsed: ExamUnit[] = JSON.parse(stored);
+        return parsed.map((u, i) => ({
+          ...u,
+          category: u.category || (i < 2 ? '1A 한국어' : '1B 한국어'),
+        }));
+      }
+      return INITIAL_UNITS;
     } catch {
       return INITIAL_UNITS;
     }
@@ -48,21 +84,23 @@ export default function App() {
   const [isTeacherModalOpen, setIsTeacherModalOpen] = useState<boolean>(false);
 
   const [teacherSettings, setTeacherSettings] = useState<TeacherSettings>(() => {
+    const effectiveUrl = getEffectiveWebhookUrl();
     try {
       const stored = localStorage.getItem('daejin_teacher_settings');
-      return stored
-        ? JSON.parse(stored)
-        : {
-            webhookUrl:
-              'https://script.google.com/macros/s/AKfycbz_daejin_korean_exam_webhook/exec',
-            currentUnitWordsText: INITIAL_UNITS[0].words.map((w) => w.word).join(', '),
-            autoDecompose: true,
-            institutionName: '대진대학교 국제교류원',
-          };
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        parsed.webhookUrl = getEffectiveWebhookUrl(parsed.webhookUrl);
+        return parsed;
+      }
+      return {
+        webhookUrl: effectiveUrl,
+        currentUnitWordsText: INITIAL_UNITS[0].words.map((w) => w.word).join(', '),
+        autoDecompose: true,
+        institutionName: '대진대학교 국제교류원',
+      };
     } catch {
       return {
-        webhookUrl:
-          'https://script.google.com/macros/s/AKfycbz_daejin_korean_exam_webhook/exec',
+        webhookUrl: effectiveUrl,
         currentUnitWordsText: INITIAL_UNITS[0].words.map((w) => w.word).join(', '),
         autoDecompose: true,
         institutionName: '대진대학교 국제교류원',
@@ -107,11 +145,17 @@ export default function App() {
   // Actions
   const handleLogin = (profile: LearnerProfile) => {
     setStudent(profile);
+    try {
+      localStorage.setItem('daejin_current_student', JSON.stringify(profile));
+    } catch {}
     setCurrentTab('unit-select');
   };
 
   const handleLogout = () => {
     setStudent(null);
+    try {
+      localStorage.removeItem('daejin_current_student');
+    } catch {}
     setCurrentTab('login');
   };
 
@@ -138,15 +182,34 @@ export default function App() {
       '0'
     )}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')} KST`;
 
+    const wrongWordsList = results
+      .filter((r) => !r.isCorrect)
+      .map((r) => r.word)
+      .join(', ');
+    const wrongWords = wrongWordsList || '없음 (만점)';
+
+    let currentStudent = student;
+    if (!currentStudent) {
+      try {
+        const stored = localStorage.getItem('daejin_current_student');
+        if (stored) currentStudent = JSON.parse(stored);
+      } catch {}
+    }
+
+    const currentStudentId = currentStudent?.studentId || '20100042';
+    const currentStudentName = currentStudent?.name || '최재민';
+    const currentEnglishName = currentStudent?.englishName || 'Jaemin Choi';
+    const currentClass = currentStudent?.courseClass || currentStudent?.gradeClass || '1A 한국어';
+
     const newSubmission: TestSubmission = {
       id: `sub-${Date.now()}`,
       unitId: activeUnit.id,
       unitTitle: activeUnit.title,
-      studentId: student?.studentId || '20261042',
-      studentName: student?.name || '마이클 첸',
-      englishName: student?.englishName,
-      courseClass: student?.courseClass || student?.gradeClass || '세종한국어 1급 A반',
-      institution: student?.institution || '대진대학교 국제교류원 한국어교육센터',
+      studentId: currentStudentId,
+      studentName: currentStudentName,
+      englishName: currentEnglishName,
+      courseClass: currentClass,
+      institution: currentStudent?.institution || '대진대학교 국제교류원 한국어교육센터',
       score,
       correctCount,
       wrongCount,
@@ -156,6 +219,7 @@ export default function App() {
       txId: `DJU_#${Math.floor(1000 + Math.random() * 9000)}-KO`,
       syncedToGoogleSheet: true,
       questionResults: results,
+      wrongWords,
     };
 
     setSubmissions((prev) => [newSubmission, ...prev]);
@@ -175,17 +239,23 @@ export default function App() {
       })
     );
 
-    // Webhook fetch simulation
-    if (teacherSettings.webhookUrl) {
+    // 구글 스프레드시트 실시간 성적 전송
+    const targetWebhookUrl = getEffectiveWebhookUrl(teacherSettings.webhookUrl);
+    if (targetWebhookUrl && targetWebhookUrl.startsWith('http')) {
       try {
-        fetch(teacherSettings.webhookUrl, {
+        fetch(targetWebhookUrl, {
           method: 'POST',
           mode: 'no-cors',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newSubmission),
-        }).catch(() => {});
-      } catch {
-        // Handled
+          body: JSON.stringify({
+            ...newSubmission,
+            gradeClass: newSubmission.courseClass,
+          }),
+        }).catch((err) => {
+          console.warn('Webhook transmission error:', err);
+        });
+      } catch (err) {
+        console.warn('Webhook transmission exception:', err);
       }
     }
 
@@ -235,10 +305,58 @@ export default function App() {
     );
   };
 
+  // 어휘 이미지 AI 생성 및 커스텀 이미지 업데이트
+  const handleUpdateWordImage = (word: string, newImageUrl: string) => {
+    saveCustomVocabImage(word, newImageUrl);
+    setUnits((prev) =>
+      prev.map((unit) => ({
+        ...unit,
+        words: unit.words.map((w) =>
+          w.word === word ? { ...w, imageUrl: newImageUrl } : w
+        ),
+      }))
+    );
+  };
+
   // 세종한국어 1~4단원 표준 프리셋 복구
   const handleResetToPresets = () => {
     if (confirm('세종한국어 1~4단원 표준 템플릿으로 단원 목록을 초기화하시겠습니까?')) {
       setUnits(SEJONG_PRESET_UNITS);
+    }
+  };
+
+  // 학생 수강 분반 업데이트 (My Page에서 변경 시 호출)
+  const handleUpdateStudentCourseClass = async (newClass: CourseCategory) => {
+    if (!student) return;
+    const updatedStudent: LearnerProfile = {
+      ...student,
+      courseClass: newClass,
+      gradeClass: newClass,
+    };
+    setStudent(updatedStudent);
+
+    try {
+      localStorage.setItem('daejin_current_student', JSON.stringify(updatedStudent));
+
+      // daejin_users 동기화
+      const usersStr = localStorage.getItem('daejin_users');
+      if (usersStr) {
+        const users = JSON.parse(usersStr);
+        const updatedUsers = users.map((u: any) =>
+          u.studentId === student.studentId ? { ...u, courseClass: newClass } : u
+        );
+        localStorage.setItem('daejin_users', JSON.stringify(updatedUsers));
+      }
+
+      // Supabase 클라우드 동기화
+      if (isSupabaseConfigured() && student.studentId) {
+        await supabase
+          .from('students')
+          .update({ course_class: newClass })
+          .eq('student_id', student.studentId);
+      }
+    } catch (e) {
+      console.error('Failed to sync student course class:', e);
     }
   };
 
@@ -295,9 +413,11 @@ export default function App() {
 
         {currentTab === 'vocab' && (
           <VocabBookModal
+            student={student}
             units={units.filter((u) => u.isPublished)}
             onClose={() => setCurrentTab('unit-select')}
             onStartUnit={handleSelectUnit}
+            onUpdateWordImage={handleUpdateWordImage}
           />
         )}
 
@@ -305,6 +425,8 @@ export default function App() {
           <StudyRecordsModal
             student={student}
             submissions={submissions}
+            onUpdateCourseClass={handleUpdateStudentCourseClass}
+            onNavigateToTest={() => setCurrentTab('unit-select')}
             onSelectUnitToRetake={(unitId) => {
               const u = units.find((x) => x.id === unitId) || units[0];
               setActiveUnit(u);
@@ -328,6 +450,8 @@ export default function App() {
         teacherSettings={teacherSettings}
         onSaveSettings={setTeacherSettings}
         submissions={submissions}
+        onUpdateWordImage={handleUpdateWordImage}
+        student={student}
       />
     </div>
   );

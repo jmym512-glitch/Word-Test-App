@@ -91,35 +91,46 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="relative group">
               <button
                 type="button"
-                className="flex items-center gap-2 pl-2 pr-1.5 py-1 rounded-full bg-[#f8fafc] hover:bg-[#f1f5f9] border border-[#e2e8f0] transition-colors cursor-pointer"
+                className="flex items-center gap-2 pl-3 pr-1.5 py-1 rounded-full bg-[#f8fafc] hover:bg-[#f1f5f9] border border-[#e2e8f0] transition-colors cursor-pointer"
               >
                 <span className="text-xs font-bold text-[#0c2340] hidden sm:inline">
-                  {student.name}
+                  {student.name} ({student.studentId})
                 </span>
-                <div className="w-7 h-7 rounded-full bg-[#0c2340] flex items-center justify-center text-white text-xs font-bold">
-                  {student.name.slice(0, 1)}
+                <div className="w-7 h-7 rounded-full bg-[#0c2340] flex items-center justify-center text-white text-xs font-bold shadow-2xs">
+                  {(student.name || '학').slice(0, 1)}
                 </div>
               </button>
 
-              <div className="absolute right-0 top-full mt-1.5 w-56 bg-white rounded-2xl shadow-xl border border-[#e2e8f0] py-3 px-4 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all z-50 text-left">
-                <div className="text-xs font-bold text-[#0c2340]">{student.name} 수강생</div>
+              <div className="absolute right-0 top-full mt-1.5 w-60 bg-white rounded-2xl shadow-xl border border-[#e2e8f0] py-3 px-4 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all z-50 text-left">
+                <div className="text-xs font-extrabold text-[#0c2340]">
+                  {student.name} <span className="text-[#64748b] font-normal font-mono">({student.studentId})</span>
+                </div>
                 {student.englishName && (
                   <div className="text-[11px] text-[#64748b]">{student.englishName}</div>
                 )}
-                <div className="text-[11px] text-[#0284c7] font-semibold mt-1">
-                  {student.courseClass || student.gradeClass}
+                <div className="inline-flex items-center gap-1 text-[11px] font-bold text-[#0284c7] mt-1.5 bg-[#f0f9ff] px-2 py-0.5 rounded-full border border-[#bae6fd]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#0284c7]" />
+                  <span>수강 분반: {student.courseClass || '1A 한국어'}</span>
                 </div>
-                <div className="text-[10px] text-[#94a3b8] mb-2">
-                  학번: {student.studentId} · {student.nationality}
+                <div className="text-[10px] text-[#94a3b8] mt-1 mb-2">
+                  소속: {student.institution || '대진대학교 국제교류원'}
                 </div>
-                <div className="border-t border-[#f1f5f9] pt-2">
+                <div className="border-t border-[#f1f5f9] pt-2 flex flex-col gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('records')}
+                    className="w-full text-left text-xs text-[#0284c7] hover:text-[#0369a1] font-bold flex items-center gap-1.5 py-1 cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[15px]">settings_accessibility</span>
+                    <span>내 분반 변경 (My Page)</span>
+                  </button>
                   <button
                     type="button"
                     onClick={onLogout}
-                    className="w-full text-left text-xs text-red-600 hover:text-red-700 font-bold flex items-center gap-1 py-1 cursor-pointer"
+                    className="w-full text-left text-xs text-red-600 hover:text-red-700 font-bold flex items-center gap-1.5 py-1 cursor-pointer"
                   >
                     <span className="material-symbols-outlined text-[15px]">logout</span>
-                    수강생 로그아웃
+                    <span>수강생 로그아웃</span>
                   </button>
                 </div>
               </div>

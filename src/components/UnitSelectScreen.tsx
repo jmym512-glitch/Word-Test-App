@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ExamUnit, LearnerProfile } from '../types';
+import { ExamUnit, LearnerProfile, CourseCategory } from '../types';
 
 interface UnitSelectScreenProps {
   student: LearnerProfile;
@@ -8,27 +8,50 @@ interface UnitSelectScreenProps {
   onLogout: () => void;
 }
 
+const CATEGORY_TABS: (CourseCategory | '전체')[] = [
+  '전체',
+  '1A 한국어',
+  '1B 한국어',
+  '2A 한국어',
+  '2B 한국어',
+];
+
 export const UnitSelectScreen: React.FC<UnitSelectScreenProps> = ({
   student,
   units,
   onSelectUnit,
   onLogout,
 }) => {
-  // 교사가 등록(게시)한 단원만 필터링 (isPublished === true)
   const publishedUnits = units.filter((u) => u.isPublished);
+  const studentClass = (student.courseClass as CourseCategory) || '1A 한국어';
+  const [selectedCategory, setSelectedCategory] = useState<CourseCategory | '전체'>(studentClass);
+
+  // 학생의 분반이 변경되었을 때 탭도 즉시 해당 분반으로 갱신
+  useEffect(() => {
+    if (student.courseClass) {
+      setSelectedCategory((student.courseClass as CourseCategory) || '1A 한국어');
+    }
+  }, [student.courseClass]);
+
+  // 대분류 카테고리 필터링
+  const filteredUnits = publishedUnits.filter((u) => {
+    if (selectedCategory === '전체') return true;
+    const cat = u.category || '1A 한국어';
+    return cat === selectedCategory;
+  });
 
   const [selectedUnitId, setSelectedUnitId] = useState<string>(
-    publishedUnits[0]?.id || ''
+    filteredUnits[0]?.id || publishedUnits[0]?.id || ''
   );
 
-  // publishedUnits가 바뀔 때 선택 단원 갱신
+  // filteredUnits가 바뀔 때 선택 단원 갱신
   useEffect(() => {
-    if (publishedUnits.length > 0 && !publishedUnits.some((u) => u.id === selectedUnitId)) {
-      setSelectedUnitId(publishedUnits[0].id);
+    if (filteredUnits.length > 0 && !filteredUnits.some((u) => u.id === selectedUnitId)) {
+      setSelectedUnitId(filteredUnits[0].id);
     }
-  }, [publishedUnits, selectedUnitId]);
+  }, [filteredUnits, selectedUnitId]);
 
-  const selectedUnit = publishedUnits.find((u) => u.id === selectedUnitId) || publishedUnits[0];
+  const selectedUnit = filteredUnits.find((u) => u.id === selectedUnitId) || filteredUnits[0];
 
   const currentDateFormatted = new Intl.DateTimeFormat('ko-KR', {
     year: 'numeric',
@@ -44,6 +67,20 @@ export const UnitSelectScreen: React.FC<UnitSelectScreenProps> = ({
     return "Let's Start!";
   };
 
+  const getCategoryBadgeStyle = (category?: string) => {
+    switch (category) {
+      case '1B 한국어':
+        return 'bg-[#ccfbf1] text-[#0f766e] border-[#99f6e4]';
+      case '2A 한국어':
+        return 'bg-[#f3e8ff] text-[#7e22ce] border-[#e9d5ff]';
+      case '2B 한국어':
+        return 'bg-[#e0e7ff] text-[#4338ca] border-[#c7d2fe]';
+      case '1A 한국어':
+      default:
+        return 'bg-[#e0f2fe] text-[#0369a1] border-[#bae6fd]';
+    }
+  };
+
   return (
     <div className="w-full max-w-[760px] mx-auto px-4 sm:px-6 py-6 sm:py-10 select-none">
       <div className="w-full max-w-[680px] mx-auto flex flex-col gap-6 pb-12">
@@ -51,7 +88,7 @@ export const UnitSelectScreen: React.FC<UnitSelectScreenProps> = ({
         <div className="w-full bg-white rounded-2xl p-4 sm:p-5 border border-[#e2e8f0] shadow-sm flex items-center justify-between">
           <div className="flex items-center gap-3 sm:gap-4">
             <div className="w-12 h-12 rounded-full bg-[#0c2340] flex items-center justify-center text-white shrink-0 shadow-sm font-bold text-sm">
-              {student.name.slice(0, 1)}
+              {(student.name || '학').slice(0, 1)}
             </div>
             <div className="flex flex-col">
               <div className="flex items-center gap-2 flex-wrap">
@@ -99,36 +136,71 @@ export const UnitSelectScreen: React.FC<UnitSelectScreenProps> = ({
             Please select the session to take.
           </h1>
           <p className="text-[13px] sm:text-[14px] text-[#64748b]">
-            This is the Sejong Korean vocabulary test list. Please select your target session to begin the test.
+            대진대학교 한국어 정규 과정별 어휘 시험 목록입니다. 응시할 시험을 선택해 주세요.
           </p>
         </div>
 
+        {/* Category Filter Tabs */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mt-1">
+          {CATEGORY_TABS.map((tab) => {
+            const count =
+              tab === '전체'
+                ? publishedUnits.length
+                : publishedUnits.filter((u) => (u.category || '1A 한국어') === tab).length;
+            const isTabActive = selectedCategory === tab;
+
+            return (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setSelectedCategory(tab)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+                  isTabActive
+                    ? 'bg-[#0c2340] text-white shadow-sm'
+                    : 'bg-white text-[#475569] hover:bg-[#f1f5f9] border border-[#e2e8f0]'
+                }`}
+              >
+                <span>{tab}</span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                    isTabActive ? 'bg-white/20 text-white' : 'bg-[#f1f5f9] text-[#64748b]'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* Condition: No Published Units by Teacher */}
-        {publishedUnits.length === 0 ? (
+        {filteredUnits.length === 0 ? (
           <div className="w-full bg-white rounded-2xl p-8 sm:p-12 border border-[#e2e8f0] shadow-sm flex flex-col items-center justify-center text-center gap-3">
             <div className="w-14 h-14 rounded-full bg-[#f1f5f9] flex items-center justify-center text-[#64748b]">
               <span className="material-symbols-outlined text-[32px]">folder_off</span>
             </div>
             <h3 className="text-[17px] font-bold text-[#0c2340]">
-              현재 교사가 등록한 시험 단원이 없습니다
+              {selectedCategory === '전체'
+                ? '현재 교사가 등록한 시험 단원이 없습니다'
+                : `[${selectedCategory}] 과정에 등록된 시험 단원이 없습니다`}
             </h3>
             <p className="text-[13px] text-[#64748b] max-w-md leading-relaxed">
-              선생님께서 상단 우측 [관리] 메뉴에서 세종한국어 단원을 등록하고 [게시하기]를 켜면 여기에 즉시 나타납니다.
+              선생님께서 상단 우측 [관리] 메뉴에서 시험을 등록하고 [게시하기]를 켜면 여기에 즉시 나타납니다.
             </p>
-            <div className="flex items-center gap-3 mt-2">
+            {selectedCategory !== '전체' && (
               <button
                 type="button"
-                onClick={onLogout}
-                className="px-4 py-2 bg-[#f1f5f9] hover:bg-[#e2e8f0] text-[#0c2340] text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                onClick={() => setSelectedCategory('전체')}
+                className="mt-1 px-4 py-2 bg-[#0c2340] text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
               >
-                로그인 화면으로 돌아가기
+                전체 시험 목록 보기
               </button>
-            </div>
+            )}
           </div>
         ) : (
           /* Published Units List */
           <div className="flex flex-col gap-3.5">
-            {publishedUnits.map((unit) => {
+            {filteredUnits.map((unit) => {
               const isSelected = selectedUnitId === unit.id;
               const isCompleted = unit.status === 'completed';
 
@@ -153,7 +225,17 @@ export const UnitSelectScreen: React.FC<UnitSelectScreenProps> = ({
 
                   <div className="flex items-start justify-between gap-3 pl-2">
                     <div className="flex flex-col gap-1.5 flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Course Category Badge */}
+                        <span
+                          className={`inline-flex items-center gap-1 text-[11px] font-extrabold px-2.5 py-0.5 rounded-full border ${getCategoryBadgeStyle(
+                            unit.category
+                          )}`}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                          {unit.category || '1A 한국어'}
+                        </span>
+
                         {unit.status === 'in_progress' ? (
                           <>
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#0284c7]/15 text-[#0284c7] text-[11px] font-bold">
@@ -194,7 +276,9 @@ export const UnitSelectScreen: React.FC<UnitSelectScreenProps> = ({
                             : 'text-[#0c2340] group-hover:text-[#0284c7]'
                         }`}
                       >
-                        {unit.title}
+                        {unit.title.startsWith(`[${unit.category || '1A 한국어'}]`)
+                          ? unit.title
+                          : `[${unit.category || '1A 한국어'}] ${unit.title}`}
                       </h3>
 
                       {/* Meta Specification Tags */}
@@ -212,9 +296,22 @@ export const UnitSelectScreen: React.FC<UnitSelectScreenProps> = ({
                           </>
                         ) : (
                           <>
+                            {unit.subtitle && (
+                              <span className="flex items-center gap-1">
+                                <span className="material-symbols-outlined text-[15px] text-[#64748b]">calendar_today</span>
+                                <span>{unit.subtitle}</span>
+                              </span>
+                            )}
                             <span className="flex items-center gap-1">
                               <span className="material-symbols-outlined text-[15px] text-[#64748b]">format_list_numbered</span>
-                              문항 수: <strong>{unit.questionCount}문항</strong>
+                              <span>
+                                문항 수: <strong>{Math.min(10, unit.words.length)}문항</strong>
+                                {unit.words.length > 10 && (
+                                  <span className="text-[11px] text-[#0284c7] ml-1 font-semibold">
+                                    (총 {unit.words.length}개 중 무작위 10문제)
+                                  </span>
+                                )}
+                              </span>
                             </span>
                             <span className="flex items-center gap-1">
                               <span className="material-symbols-outlined text-[15px] text-[#64748b]">timer</span>

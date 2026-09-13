@@ -1,7 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { LearnerProfile } from '../types';
 import { DaejinLogo } from './DaejinLogo';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import {
+  supabase,
+  isSupabaseConfigured,
+  getEffectiveSupabaseConfig,
+  saveStoredSupabaseConfig,
+  checkSupabaseConnection,
+} from '../lib/supabase';
 
 interface LoginScreenProps {
   initialProfile?: LearnerProfile;
@@ -73,6 +79,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [forgotSuccess, setForgotSuccess] = useState<string | null>(null);
   const [isForgotLoading, setIsForgotLoading] = useState(false);
 
+  // Supabase 클라우드 설정 모달 상태
+  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
+  const [supabaseUrlInput, setSupabaseUrlInput] = useState(() => getEffectiveSupabaseConfig().url);
+  const [supabaseKeyInput, setSupabaseKeyInput] = useState(() => getEffectiveSupabaseConfig().anonKey);
+  const [supabaseConnStatus, setSupabaseConnStatus] = useState<{ ok: boolean; message: string } | null>(null);
+  const [isTestingSupabase, setIsTestingSupabase] = useState(false);
+  const [isCloudConfigured, setIsCloudConfigured] = useState(() => isSupabaseConfigured());
+
   // 로컬스토리지 동기화
   useEffect(() => {
     try {
@@ -81,6 +95,30 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       // ignore
     }
   }, [users]);
+
+  // Supabase 연결 테스트 및 저장
+  const handleTestAndSaveSupabase = async () => {
+    setIsTestingSupabase(true);
+    setSupabaseConnStatus(null);
+    try {
+      saveStoredSupabaseConfig(supabaseUrlInput, supabaseKeyInput);
+      const res = await checkSupabaseConnection();
+      setSupabaseConnStatus(res);
+      const configured = isSupabaseConfigured();
+      setIsCloudConfigured(configured);
+      if (res.ok) {
+        setSuccessMessage('Supabase 클라우드 DB가 정상적으로 연결되었습니다!');
+        setTimeout(() => {
+          setIsSupabaseModalOpen(false);
+          setSuccessMessage(null);
+        }, 1500);
+      }
+    } catch (err: any) {
+      setSupabaseConnStatus({ ok: false, message: err.message || '연결 실패' });
+    } finally {
+      setIsTestingSupabase(false);
+    }
+  };
 
   // 로그인 처리 (Supabase 연동 및 로컬 폴백)
   const handleLoginSubmit = async (e: React.FormEvent) => {
@@ -106,10 +144,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           name: MASTER_TEST_ACCOUNT.name,
           email: MASTER_TEST_ACCOUNT.email,
           englishName: 'Test Student',
-          courseClass: '세종한국어 수강반',
-          institution: '대진대학교 한국학과',
-          gradeClass: '세종한국어 수강반',
-          school: '대진대학교 한국학과',
+          courseClass: '1A 한국어',
+          institution: '대진대학교 국제교류원 한국어교육센터',
+          gradeClass: '1A 한국어',
+          school: '대진대학교 국제교류원 한국어교육센터',
         });
         setIsLoading(false);
       }, 250);
@@ -118,7 +156,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
     try {
       // 2. Supabase가 설정된 경우 클라우드 DB에서 조회
-      if (isSupabaseConfigured) {
+      if (isSupabaseConfigured()) {
         const { data: dbUser, error: queryError } = await supabase
           .from('students')
           .select('*')
@@ -128,6 +166,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
         if (queryError) {
           console.warn('Supabase login check error:', queryError);
+          setIsLoading(false);
+          setErrorMessage(`Supabase 클라우드 DB 조회 오류: ${queryError.message}`);
+          return;
         }
 
         if (dbUser) {
@@ -137,11 +178,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             name: dbUser.name,
             email: dbUser.email,
             englishName: dbUser.english_name,
-            courseClass: dbUser.course_class || '세종한국어 수강반',
-            institution: dbUser.institution || '대진대학교 한국학과',
+            courseClass: dbUser.course_class || '1A 한국어',
+            institution: dbUser.institution || '대진대학교 국제교류원 한국어교육센터',
             nationality: dbUser.nationality,
-            gradeClass: dbUser.course_class || '세종한국어 수강반',
-            school: dbUser.institution || '대진대학교 한국학과',
+            gradeClass: dbUser.course_class || '1A 한국어',
+            school: dbUser.institution || '대진대학교 국제교류원 한국어교육센터',
           });
           setIsLoading(false);
           return;
@@ -156,17 +197,23 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           password: matched.password,
           name: matched.name,
           email: matched.email,
-          courseClass: '세종한국어 수강반',
-          institution: '대진대학교 한국학과',
-          gradeClass: '세종한국어 수강반',
-          school: '대진대학교 한국학과',
+          courseClass: '1A 한국어',
+          institution: '대진대학교 국제교류원 한국어교육센터',
+          gradeClass: '1A 한국어',
+          school: '대진대학교 국제교류원 한국어교육센터',
         });
         setIsLoading(false);
         return;
       }
 
       setIsLoading(false);
-      setErrorMessage('학번 또는 비밀번호가 일치하지 않습니다. (Invalid Student ID or Password.)');
+      if (!isSupabaseConfigured()) {
+        setErrorMessage(
+          '학번 또는 비밀번호가 일치하지 않습니다. 현재 로컬 오프라인 모드로 실행 중이며 Supabase 클라우드 DB 키가 연결되지 않아 클라우드 학생 계정을 조회할 수 없습니다. 상단 [🔑 DB 연결 설정]을 통해 Supabase Anon Key를 입력하시거나, 로컬 테스트 계정(학번: 1111 / PW: 1111)으로 로그인해 주세요.'
+        );
+      } else {
+        setErrorMessage('학번 또는 비밀번호가 일치하지 않습니다. (Invalid Student ID or Password.)');
+      }
     } catch (err: any) {
       setIsLoading(false);
       setErrorMessage(`로그인 처리 중 오류가 발생했습니다: ${err.message || '다시 시도해 주세요.'}`);
@@ -195,7 +242,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
     try {
       // 1. Supabase 연동 시 중복 검사 및 INSERT
-      if (isSupabaseConfigured) {
+      if (isSupabaseConfigured()) {
         const { data: existing, error: checkError } = await supabase
           .from('students')
           .select('student_id')
@@ -221,8 +268,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             password: inputPw,
             name: inputName,
             email: inputEmail,
-            course_class: '세종한국어 수강반',
-            institution: '대진대학교 한국학과',
+            course_class: '1A 한국어',
+            institution: '대진대학교 국제교류원 한국어교육센터',
           },
         ]);
 
@@ -258,10 +305,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           password: newUser.password,
           name: newUser.name,
           email: newUser.email,
-          courseClass: '세종한국어 수강반',
-          institution: '대진대학교 한국학과',
-          gradeClass: '세종한국어 수강반',
-          school: '대진대학교 한국학과',
+          courseClass: '1A 한국어',
+          institution: '대진대학교 국제교류원 한국어교육센터',
+          gradeClass: '1A 한국어',
+          school: '대진대학교 국제교류원 한국어교육센터',
         });
         setIsLoading(false);
       }, 600);
@@ -287,7 +334,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     setIsForgotLoading(true);
 
     try {
-      if (isSupabaseConfigured) {
+      if (isSupabaseConfigured()) {
         const { data, error } = await supabase
           .from('students')
           .select('student_id, name, email')
@@ -349,7 +396,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     setIsForgotLoading(true);
 
     try {
-      if (isSupabaseConfigured) {
+      if (isSupabaseConfigured()) {
         const { error } = await supabase
           .from('students')
           .update({ password: newPw })
@@ -401,7 +448,25 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col justify-center items-center p-4 select-none">
       {/* Top Header Shortcut */}
-      <header className="w-full max-w-[440px] flex justify-end items-center mb-4">
+      <header className="w-full max-w-[440px] flex justify-between items-center mb-4">
+        {/* Supabase Status Button */}
+        <button
+          type="button"
+          onClick={() => {
+            setIsSupabaseModalOpen(true);
+            setSupabaseConnStatus(null);
+          }}
+          className={`text-[11px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 transition-all cursor-pointer border ${
+            isCloudConfigured
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 shadow-2xs'
+              : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 animate-pulse'
+          }`}
+          title="클라우드 Supabase DB 연결 상태 확인 및 키 설정"
+        >
+          <span className={`w-2 h-2 rounded-full ${isCloudConfigured ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+          <span>{isCloudConfigured ? 'Supabase 클라우드 연동됨' : '🔑 Supabase DB 연결 설정'}</span>
+        </button>
+
         <button
           type="button"
           onClick={onOpenTeacherSettings}
@@ -807,6 +872,111 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Supabase Cloud DB Configuration Modal */}
+      {isSupabaseModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 select-none">
+          <div className="w-full max-w-[440px] bg-white rounded-3xl p-6 shadow-2xl border border-[#e2e8f0] flex flex-col text-left">
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-[#f1f5f9]">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-[#0c2340] text-white flex items-center justify-center">
+                  <span className="material-symbols-outlined text-[18px]">database</span>
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-[#0c2340]">Supabase 클라우드 DB 연결 설정</h3>
+                  <p className="text-[11px] text-[#64748b]">원격 학생 계정 및 시험 데이터 동기화</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSupabaseModalOpen(false)}
+                className="w-8 h-8 rounded-full hover:bg-[#f1f5f9] text-[#64748b] flex items-center justify-center cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+
+            {/* Status Feedback */}
+            {supabaseConnStatus && (
+              <div
+                className={`mb-3.5 p-3 rounded-xl text-xs font-semibold border flex items-start gap-2 ${
+                  supabaseConnStatus.ok
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    : 'bg-red-50 text-red-700 border-red-200'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[16px] shrink-0 mt-0.5">
+                  {supabaseConnStatus.ok ? 'check_circle' : 'error'}
+                </span>
+                <span>{supabaseConnStatus.message}</span>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-3.5">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-bold text-[#0c2340]">Supabase Project URL</label>
+                <input
+                  type="text"
+                  value={supabaseUrlInput}
+                  onChange={(e) => setSupabaseUrlInput(e.target.value)}
+                  placeholder="https://your-project.supabase.co"
+                  className="w-full px-3 py-2 bg-[#f8fafc] text-xs font-mono text-[#0c2340] rounded-xl border border-[#e2e8f0] focus:border-[#0284c7] outline-none"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-bold text-[#0c2340]">
+                  Supabase Anon Key (Public API Key)
+                </label>
+                <textarea
+                  rows={3}
+                  value={supabaseKeyInput}
+                  onChange={(e) => setSupabaseKeyInput(e.target.value)}
+                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  className="w-full px-3 py-2 bg-[#f8fafc] text-xs font-mono text-[#0c2340] rounded-xl border border-[#e2e8f0] focus:border-[#0284c7] outline-none resize-none"
+                />
+                <p className="text-[10px] text-[#64748b]">
+                  * Supabase 프로젝트 대시보드 (Project Settings &rarr; API &rarr; Project API keys)의 <strong>anon public</strong> 키를 입력해 주세요.
+                </p>
+              </div>
+
+              <div className="bg-[#f8fafc] p-3 rounded-xl border border-[#e2e8f0] text-[11px] text-[#475569] leading-relaxed">
+                💡 <strong>로컬 환경 영구 적용 안내:</strong><br />
+                프로젝트 폴더의 <code>.env</code> 파일에<br />
+                <code>VITE_SUPABASE_ANON_KEY="키값"</code>을 입력해 두시면 브라우저 캐시 삭제 후에도 영구 유지됩니다.
+              </div>
+
+              <div className="flex gap-2 mt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsSupabaseModalOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-[#f1f5f9] hover:bg-[#e2e8f0] text-xs font-bold text-[#64748b] cursor-pointer"
+                >
+                  닫기
+                </button>
+                <button
+                  type="button"
+                  disabled={isTestingSupabase}
+                  onClick={handleTestAndSaveSupabase}
+                  className="flex-1 py-2.5 rounded-xl bg-[#0c2340] hover:bg-[#163a66] text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-60"
+                >
+                  {isTestingSupabase ? (
+                    <>
+                      <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
+                      <span>연결 확인 중...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-[16px]">save</span>
+                      <span>연결 테스트 및 저장</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

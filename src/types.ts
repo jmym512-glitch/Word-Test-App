@@ -19,11 +19,14 @@ export interface WordItem {
   syllables: SyllableDecomposition[];
 }
 
+export type CourseCategory = '1A 한국어' | '1B 한국어' | '2A 한국어' | '2B 한국어';
+
 export interface ExamUnit {
   id: string;
   unitNumber: number;
   title: string;
   subtitle: string;
+  category?: CourseCategory; // 대진대학교 한국어 정규 교육과정 대분류
   isPublished: boolean; // 교사가 등록/게시한 단원인지 여부 (false면 학생 화면에 미표시)
   status: 'in_progress' | 'available' | 'completed';
   questionCount: number;
@@ -82,6 +85,7 @@ export interface TestSubmission {
   txId: string;
   syncedToGoogleSheet: boolean;
   questionResults: QuestionResult[];
+  wrongWords?: string;
 }
 
 export interface TeacherSettings {

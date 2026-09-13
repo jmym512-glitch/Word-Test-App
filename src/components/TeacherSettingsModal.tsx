@@ -1,8 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { ExamUnit, TeacherSettings, TestSubmission, WordItem } from '../types';
+import { ExamUnit, TeacherSettings, TestSubmission, WordItem, CourseCategory, LearnerProfile } from '../types';
 import { decomposeWord, formatDecompositionText } from '../lib/hangul';
-import { VOCAB_IMAGES, SEJONG_PRESET_UNITS, createWordItem } from '../data/defaultUnits';
-import { supabase, isSupabaseConfigured, DbStudent } from '../lib/supabase';
+import {
+  VOCAB_IMAGES,
+  SEJONG_PRESET_UNITS,
+  createWordItem,
+  getCandidateImagesForWord,
+  getWordDisplayImage,
+  saveCustomVocabImage,
+} from '../data/defaultUnits';
+import {
+  supabase,
+  isSupabaseConfigured,
+  getEffectiveSupabaseConfig,
+  saveStoredSupabaseConfig,
+  checkSupabaseConnection,
+  DbStudent,
+} from '../lib/supabase';
+import { DEFAULT_GOOGLE_SHEETS_WEBHOOK_URL, getEffectiveWebhookUrl } from '../config';
 
 interface TeacherSettingsModalProps {
   isOpen: boolean;
@@ -17,6 +32,8 @@ interface TeacherSettingsModalProps {
   teacherSettings: TeacherSettings;
   onSaveSettings: (settings: TeacherSettings) => void;
   submissions: TestSubmission[];
+  onUpdateWordImage?: (word: string, imageUrl: string) => void;
+  student?: LearnerProfile | null;
 }
 
 export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
@@ -32,6 +49,8 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
   teacherSettings,
   onSaveSettings,
   submissions,
+  onUpdateWordImage,
+  student,
 }) => {
   const [activeTab, setActiveTab] = useState<'units' | 'add-unit' | 'webhook' | 'logs' | 'students'>('units');
   const [selectedUnitId, setSelectedUnitId] = useState<string>(units[0]?.id || 'sejong-unit-1');
@@ -45,33 +64,86 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
   const [studentsList, setStudentsList] = useState<DbStudent[]>([]);
   const [isLoadingStudents, setIsLoadingStudents] = useState<boolean>(false);
 
+  // Supabase 클라우드 설정 상태
+  const [cloudUrlInput, setCloudUrlInput] = useState(() => getEffectiveSupabaseConfig().url);
+  const [cloudKeyInput, setCloudKeyInput] = useState(() => getEffectiveSupabaseConfig().anonKey);
+  const [cloudStatusMsg, setCloudStatusMsg] = useState<{ ok: boolean; message: string } | null>(null);
+  const [isTestingCloud, setIsTestingCloud] = useState(false);
+  const [isCloudActive, setIsCloudActive] = useState(() => isSupabaseConfigured());
+
+  const handleSaveAndTestCloud = async () => {
+    setIsTestingCloud(true);
+    setCloudStatusMsg(null);
+    try {
+      saveStoredSupabaseConfig(cloudUrlInput, cloudKeyInput);
+      const res = await checkSupabaseConnection();
+      setCloudStatusMsg(res);
+      const active = isSupabaseConfigured();
+      setIsCloudActive(active);
+      if (res.ok) {
+        await fetchStudents();
+      }
+    } catch (e: any) {
+      setCloudStatusMsg({ ok: false, message: e.message || '연결 실패' });
+    } finally {
+      setIsTestingCloud(false);
+    }
+  };
+
   // 단원 어휘 편집용 텍스트
   const currentEditingUnit = units.find((u) => u.id === selectedUnitId) || units[0];
   const [wordInputText, setWordInputText] = useState<string>(
     currentEditingUnit ? currentEditingUnit.words.map((w) => w.word).join(', ') : ''
   );
   const [unitTitle, setUnitTitle] = useState<string>(currentEditingUnit?.title || '');
+  const [unitCategory, setUnitCategory] = useState<CourseCategory>(
+    (currentEditingUnit?.category as CourseCategory) || '1A 한국어'
+  );
   const [unitTotalMinutes, setUnitTotalMinutes] = useState<number>(currentEditingUnit?.totalTimeLimitMinutes || 10);
 
-  // 새 단원 추가 폼 상태
-  const [newUnitNumber, setNewUnitNumber] = useState<number>(units.length + 1);
-  const [newUnitTitle, setNewUnitTitle] = useState<string>('');
-  const [newUnitWords, setNewUnitWords] = useState<string>('');
-  const [newUnitTotalMinutes, setNewUnitTotalMinutes] = useState<number>(10);
+  // 새 시험 추가 폼 상태 (과정 대분류, 시험제목, 시험일, 시험 시간, 출제 단어)
+  const [newExamCategory, setNewExamCategory] = useState<CourseCategory>('1A 한국어');
+  const [newExamTitle, setNewExamTitle] = useState<string>('');
+  const [newExamDate, setNewExamDate] = useState<string>(() => {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  });
+  const [newExamTotalMinutes, setNewExamTotalMinutes] = useState<number>(10);
+  const [newExamWords, setNewExamWords] = useState<string>('');
 
-  // 웹훅 상태
-  const [webhookUrl, setWebhookUrl] = useState<string>(
-    teacherSettings.webhookUrl ||
-      'https://script.google.com/macros/s/AKfycbz_daejin_korean_exam_webhook/exec'
-  );
+  // 웹훅 상태 (기본값: 구글 Apps Script 연동 공식 웹 앱 주소)
+  const [webhookUrl, setWebhookUrl] = useState<string>(() => {
+    return getEffectiveWebhookUrl(teacherSettings.webhookUrl);
+  });
+
+  useEffect(() => {
+    if (isOpen) {
+      setWebhookUrl(getEffectiveWebhookUrl(teacherSettings.webhookUrl));
+    }
+  }, [isOpen, teacherSettings.webhookUrl]);
   const [copiedScript, setCopiedScript] = useState<boolean>(false);
   const [testStatus, setTestStatus] = useState<string | null>(null);
+
+  // 어휘 대표 이미지 선택 및 교체 모달 상태
+  const [editingWord, setEditingWord] = useState<string | null>(null);
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string>('');
+  const [customUrlInput, setCustomUrlInput] = useState<string>('');
+  const [aiPromptInput, setAiPromptInput] = useState<string>('');
+  const [isGeneratingAi, setIsGeneratingAi] = useState<boolean>(false);
+  const [imageTabMode, setImageTabMode] = useState<'preset' | 'upload' | 'url' | 'ai'>('preset');
+
+  // 웹훅 테스트 분반 선택 및 전송 로딩 상태
+  const [selectedTestClass, setSelectedTestClass] = useState<CourseCategory>('1A 한국어');
+  const [isSendingWebhookTest, setIsSendingWebhookTest] = useState<boolean>(false);
 
   // 학생 계정 목록 불러오기
   const fetchStudents = async () => {
     setIsLoadingStudents(true);
     try {
-      if (isSupabaseConfigured) {
+      if (isSupabaseConfigured()) {
         const { data, error } = await supabase
           .from('students')
           .select('*')
@@ -88,7 +160,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
             name: u.name,
             email: u.email,
             password: u.password,
-            course_class: '세종한국어 수강반',
+            course_class: u.courseClass || '1A 한국어',
             created_at: new Date().toISOString(),
           }))
         );
@@ -107,7 +179,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     }
 
     try {
-      if (isSupabaseConfigured) {
+      if (isSupabaseConfigured()) {
         const { error } = await supabase
           .from('students')
           .update({ password: '0000' })
@@ -210,6 +282,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     if (u) {
       setWordInputText(u.words.map((w) => w.word).join(', '));
       setUnitTitle(u.title);
+      setUnitCategory((u.category as CourseCategory) || '1A 한국어');
       setUnitTotalMinutes(u.totalTimeLimitMinutes || 10);
     }
   };
@@ -233,7 +306,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
       return (
         existing ||
         createWordItem(word, `${word} 어휘 학습`, '일반', undefined, {
-          partOfSpeech: '명사',
+          partOfSpeech: '명사(N)',
           englishMeaning: word,
         })
       );
@@ -242,6 +315,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     onUpdateUnitWords(currentEditingUnit.id, newWordItems);
     onUpdateUnitDetails(currentEditingUnit.id, {
       title: unitTitle.trim() || currentEditingUnit.title,
+      category: unitCategory,
       totalTimeLimitMinutes: Number(unitTotalMinutes) || 10,
     });
 
@@ -249,75 +323,224 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     setTimeout(() => setTestStatus(null), 3000);
   };
 
-  // 새 단원 추가 제출
+  // 새 시험 추가 제출
   const handleCreateNewUnit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newUnitTitle.trim() || !newUnitWords.trim()) {
-      alert('단원 제목과 시험 단어 목록을 입력해 주세요.');
+    if (!newExamTitle.trim() || !newExamWords.trim()) {
+      alert('시험제목과 출제 단어 목록을 입력해 주세요.');
       return;
     }
 
-    const parsedWords = newUnitWords
+    const parsedWords = newExamWords
       .split(/[\n,]+/)
       .map((w) => w.trim())
       .filter((w) => w.length > 0);
 
+    if (parsedWords.length === 0) {
+      alert('최소 1개 이상의 출제 단어를 입력해 주세요.');
+      return;
+    }
+
     const newUnitId = `custom-unit-${Date.now()}`;
     const wordItems: WordItem[] = parsedWords.map((word) =>
-      createWordItem(word, `${word} 세종한국어 단어`, '학습어휘')
+      createWordItem(word, `${word} 어휘 학습`, '학습어휘', undefined, {
+        partOfSpeech: '명사(N)',
+        englishMeaning: word,
+      })
     );
 
     const createdUnit: ExamUnit = {
       id: newUnitId,
-      unitNumber: Number(newUnitNumber) || units.length + 1,
-      title: newUnitTitle.trim(),
-      subtitle: '교사 등록 완료',
-      isPublished: true, // 새로 만든 단원은 기본적으로 학생에게 게시
+      unitNumber: units.length + 1,
+      title: newExamTitle.trim(),
+      category: newExamCategory,
+      subtitle: newExamDate ? `시험일: ${newExamDate}` : '교사 등록 완료',
+      isPublished: true, // 새로 등록한 시험은 기본적으로 학생에게 게시
       status: 'available',
-      questionCount: wordItems.length,
+      questionCount: Math.min(10, wordItems.length),
       timePerQuestionSeconds: 45,
-      totalTimeLimitMinutes: Number(newUnitTotalMinutes) || 10,
+      totalTimeLimitMinutes: Number(newExamTotalMinutes) || 10,
       wordsSummary: `${wordItems.slice(0, 3).map((w) => w.word).join(', ')} 등 ${wordItems.length}개`,
       words: wordItems,
-      level: '대진대 세종한국어 맞춤 단원',
+      level: `대진대 세종한국어 ${newExamCategory}`,
     };
 
     onAddUnit(createdUnit);
     setSelectedUnitId(newUnitId);
     setActiveTab('units');
-    setNewUnitTitle('');
-    setNewUnitWords('');
-    setTestStatus(`새 단원 [${createdUnit.title}]이 등록되어 학생 화면에 게시되었습니다!`);
+    setNewExamTitle('');
+    setNewExamWords('');
+    setTestStatus(`새 시험 [${newExamCategory}] [${createdUnit.title}]이 등록되어 학생 화면에 게시되었습니다!`);
     setTimeout(() => setTestStatus(null), 3000);
   };
 
-  // Apps Script 연동 코드
-  const appsScriptCode = `function doPost(e) {
+  // 어휘 이미지 편집 모달 열기
+  const handleOpenImageEditor = (word: string) => {
+    setEditingWord(word);
+    const currentImg = getWordDisplayImage(word);
+    setSelectedImageUrl(currentImg);
+    setCustomUrlInput('');
+    setAiPromptInput(`${word}, korean vocabulary education, clean illustration, high quality, white background`);
+    setImageTabMode('preset');
+  };
+
+  // 선택한 어휘 이미지 적용 및 영구 저장
+  const handleApplyImageChange = () => {
+    if (!editingWord || !selectedImageUrl) return;
+    saveCustomVocabImage(editingWord, selectedImageUrl);
+    if (onUpdateWordImage) {
+      onUpdateWordImage(editingWord, selectedImageUrl);
+    }
+    if (currentEditingUnit) {
+      const updatedWords = currentEditingUnit.words.map((w) =>
+        w.word === editingWord ? { ...w, imageUrl: selectedImageUrl } : w
+      );
+      onUpdateUnitWords(currentEditingUnit.id, updatedWords);
+    }
+    setTestStatus(`[${editingWord}] 어휘의 대표 이미지가 성공적으로 변경·저장되었습니다!`);
+    setTimeout(() => setTestStatus(null), 3000);
+    setEditingWord(null);
+  };
+
+  // 내 PC 파일 업로드 (Base64 인코딩으로 영구 로컬 저장 및 즉각 반영)
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('이미지 파일(JPG, PNG, GIF, WebP 등)만 업로드할 수 있습니다.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setSelectedImageUrl(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // AI 어휘 이미지 생성
+  const handleGenerateAiImage = () => {
+    if (!editingWord) return;
+    setIsGeneratingAi(true);
+    const prompt = aiPromptInput.trim() || `${editingWord} korean vocabulary clean clear illustration`;
+    const encoded = encodeURIComponent(prompt);
+    const newUrl = `https://image.pollinations.ai/prompt/${encoded}?width=600&height=400&nologo=true&seed=${Date.now()}`;
+
+    const img = new Image();
+    img.onload = () => {
+      setSelectedImageUrl(newUrl);
+      setIsGeneratingAi(false);
+    };
+    img.onerror = () => {
+      setIsGeneratingAi(false);
+      alert('AI 이미지 서버의 일시적 요청 한도 초과(429)로 생성이 지연되고 있습니다. [추천 4종] 중 하나를 선택하시거나 [PC 업로드]를 이용하시면 오류 없이 즉시 반영됩니다.');
+    };
+    img.src = newUrl;
+  };
+
+  // 11개 컬럼 지원 및 [1A 한국어]~[2B 한국어] 분반별 시트 자동 라우팅 Apps Script 코드
+  const appsScriptCode = `/**
+ * 대진대학교 세종한국어 단어시험 성적 자동 수집 및 분반별 자동 라우팅 스크립트
+ * 
+ * [동작 원리]
+ * 1. 학생이 시험을 제출하면 doPost(e)가 실행됩니다.
+ * 2. 수강 분반(1A 한국어 ~ 2B 한국어) 탭과 '전체 현황' 탭에 실시간으로 행이 동시 기록됩니다.
+ * 3. 탭이 시트에 없으면 자동으로 생성하고 대진대 네이비 테마 헤더 서식을 적용합니다.
+ */
+
+function doPost(e) {
   try {
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
     var data = JSON.parse(e.postData.contents);
     
-    // [학번, 한글성명, 영문성명, 수강분반, 단원명, 점수, 정답수, 오답수, 소요시간, 제출시각, 거래ID]
-    sheet.appendRow([
-      data.studentId,
-      data.studentName,
-      data.englishName || "",
-      data.courseClass || data.gradeClass || "",
-      data.unitTitle,
-      data.score,
-      data.correctCount,
-      data.wrongCount,
-      data.timeSpentSeconds + "초",
-      data.timestamp,
-      data.txId
-    ]);
+    // 학생의 수강 분반 탭 이름 (1A 한국어, 1B 한국어, 2A 한국어, 2B 한국어 등)
+    var courseClass = data.courseClass || data.gradeClass || '1A 한국어';
     
-    return ContentService.createTextOutput(JSON.stringify({ "status": "success" }))
+    // 11개 핵심 수집 컬럼 데이터 구성
+    var rowData = [
+      data.timestamp || new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }), // 1. 접속일자/제출일시
+      courseClass,                                // 2. 분반 (1A~2B)
+      data.studentId,                             // 3. 학번
+      data.studentName,                           // 4. 한글 성명
+      data.englishName || "",                     // 5. 영문 성명
+      data.unitTitle,                             // 6. 시험 제목
+      data.score,                                 // 7. 점수
+      data.correctCount + " / " + (data.totalCount || (data.correctCount + data.wrongCount)), // 8. 정답수/문항수
+      (data.timeSpentSeconds || 0) + "초",         // 9. 소요 시간
+      data.wrongWords || "없음 (만점)",            // 10. 오답 단어 목록
+      data.txId                                   // 11. 고유ID
+    ];
+    
+    // 1) 해당 분반 전용 시트 탭에 자동 기록
+    appendRecordToSheet(ss, courseClass, rowData);
+    
+    // 2) 전체 통합 현황 탭에 동시 기록
+    appendRecordToSheet(ss, "전체 현황", rowData);
+    
+    return ContentService.createTextOutput(JSON.stringify({ "status": "success", "courseClass": courseClass }))
       .setMimeType(ContentService.MimeType.JSON);
   } catch(error) {
     return ContentService.createTextOutput(JSON.stringify({ "status": "error", "message": error.toString() }))
       .setMimeType(ContentService.MimeType.JSON);
   }
+}
+
+// 특정 시트 탭에 헤더 검사 후 데이터 행 추가
+function appendRecordToSheet(ss, sheetName, rowData) {
+  var sheet = ss.getSheetByName(sheetName);
+  var headers = [
+    "접속일자/제출일시", "분반", "학번", "성명(한글)", "영문성명",
+    "시험 제목", "점수", "정답/총문항", "소요시간", "오답 단어 목록", "고유ID"
+  ];
+  
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+    sheet.appendRow(headers);
+    var headerRange = sheet.getRange(1, 1, 1, headers.length);
+    headerRange.setBackground("#0c2340")
+               .setFontColor("#ffffff")
+               .setFontWeight("bold")
+               .setHorizontalAlignment("center");
+    sheet.setFrozenRows(1);
+    sheet.autoResizeColumns(1, headers.length);
+  }
+  
+  sheet.appendRow(rowData);
+  var lastRow = sheet.getLastRow();
+  sheet.getRange(lastRow, 1, 1, rowData.length).setHorizontalAlignment("center");
+}
+
+/**
+ * [원클릭 분반 시트 사전 초기화 도구]
+ * 구글 시트에 '전체 현황', '1A 한국어', '1B 한국어', '2A 한국어', '2B 한국어' 5개 탭을
+ * 미리 생성하고 깔끔한 헤더 서식을 적용하고 싶을 때 Apps Script 실행창에서
+ * setupClassSheets 함수를 1회 [실행]하세요.
+ */
+function setupClassSheets() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var classes = ["전체 현황", "1A 한국어", "1B 한국어", "2A 한국어", "2B 한국어"];
+  var headers = [
+    "접속일자/제출일시", "분반", "학번", "성명(한글)", "영문성명",
+    "시험 제목", "점수", "정답/총문항", "소요시간", "오답 단어 목록", "고유ID"
+  ];
+  
+  classes.forEach(function(cls) {
+    var sheet = ss.getSheetByName(cls);
+    if (!sheet) {
+      sheet = ss.insertSheet(cls);
+    }
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(headers);
+    }
+    var headerRange = sheet.getRange(1, 1, 1, headers.length);
+    headerRange.setBackground("#0c2340")
+               .setFontColor("#ffffff")
+               .setFontWeight("bold")
+               .setHorizontalAlignment("center");
+    sheet.setFrozenRows(1);
+    sheet.autoResizeColumns(1, headers.length);
+  });
 }`;
 
   const handleCopyScript = () => {
@@ -326,12 +549,167 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     setTimeout(() => setCopiedScript(false), 2500);
   };
 
-  const handleTestWebhook = () => {
-    setTestStatus('구글 시트 연동 테스트 패킷 전송 중...');
-    setTimeout(() => {
-      setTestStatus('연동 성공! 테스트 행이 시트에 정상 전달되었습니다.');
-      setTimeout(() => setTestStatus(null), 3500);
-    }, 700);
+  const handleWebhookUrlChange = (val: string) => {
+    const trimmed = val.trim();
+    setWebhookUrl(trimmed);
+    onSaveSettings({ ...teacherSettings, webhookUrl: trimmed });
+    try {
+      localStorage.setItem('daejin_webhook_url', trimmed);
+      const cur = localStorage.getItem('daejin_teacher_settings');
+      const parsed = cur ? JSON.parse(cur) : {};
+      localStorage.setItem('daejin_teacher_settings', JSON.stringify({ ...parsed, webhookUrl: trimmed }));
+    } catch {}
+  };
+
+  // 분반별 실시간 웹훅 테스트 발송
+  const handleTestWebhook = async () => {
+    const trimmedUrl = webhookUrl.trim();
+    if (!trimmedUrl || !trimmedUrl.startsWith('http')) {
+      alert('올바른 구글 Webhook URL을 입력해 주세요.');
+      return;
+    }
+
+    // 테스트 실행 시 Webhook URL 즉시 자동 저장 및 동기화
+    onSaveSettings({ ...teacherSettings, webhookUrl: trimmedUrl });
+    try {
+      localStorage.setItem('daejin_webhook_url', trimmedUrl);
+      const cur = localStorage.getItem('daejin_teacher_settings');
+      const parsed = cur ? JSON.parse(cur) : {};
+      localStorage.setItem('daejin_teacher_settings', JSON.stringify({ ...parsed, webhookUrl: trimmedUrl }));
+    } catch {}
+
+    setIsSendingWebhookTest(true);
+    setTestStatus(`[${selectedTestClass}] 탭으로 테스트 성적 데이터 전송 중...`);
+
+    const currentStudentId = student?.studentId || '20100042';
+    const currentStudentName = student?.name || '최재민';
+    const currentEnglishName = student?.englishName || '';
+
+    const testPayload = {
+      timestamp: new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }),
+      studentId: currentStudentId,
+      studentName: currentStudentName,
+      englishName: currentEnglishName,
+      courseClass: selectedTestClass,
+      gradeClass: selectedTestClass,
+      unitTitle: `[${selectedTestClass}] 단어 시험 연동 테스트`,
+      score: 100,
+      correctCount: 10,
+      wrongCount: 0,
+      totalCount: 10,
+      timeSpentSeconds: 120,
+      wrongWords: '없음 (만점)',
+      txId: `TEST-${Date.now().toString(36).toUpperCase()}`,
+    };
+
+    try {
+      await fetch(trimmedUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(testPayload),
+      });
+      setTestStatus(
+        `[${selectedTestClass}] 및 [전체 현황] 시트 탭으로 테스트 행이 발송되었습니다! 스프레드시트를 열어 확인해 보세요.`
+      );
+      setTimeout(() => setTestStatus(null), 5000);
+    } catch (err: any) {
+      setTestStatus(`전송 중 오류 발생: ${err.message || '네트워크 확인 요망'}`);
+    } finally {
+      setIsSendingWebhookTest(false);
+    }
+  };
+
+  // 개별 성적 구글 시트로 즉시 전송
+  const handleSyncSubmissionToSheet = async (sub: TestSubmission) => {
+    const effectiveUrl = getEffectiveWebhookUrl(webhookUrl || teacherSettings.webhookUrl);
+    if (!effectiveUrl || !effectiveUrl.startsWith('http')) {
+      alert('유효한 구글 스프레드시트 Apps Script Webhook URL을 [구글 스프레드시트 연동] 탭에서 먼저 입력해 주세요.');
+      setActiveTab('webhook');
+      return;
+    }
+    setTestStatus(`[${sub.studentName} (${sub.studentId})] 성적 데이터를 구글 시트로 전송 중...`);
+
+    const courseClass = sub.courseClass || sub.gradeClass || '1A 한국어';
+    const payload = {
+      timestamp: sub.timestamp,
+      studentId: sub.studentId,
+      studentName: sub.studentName,
+      englishName: sub.englishName || '',
+      courseClass: courseClass,
+      gradeClass: courseClass,
+      unitTitle: sub.unitTitle,
+      score: sub.score,
+      correctCount: sub.correctCount,
+      wrongCount: sub.wrongCount,
+      totalCount: sub.totalCount,
+      timeSpentSeconds: sub.timeSpentSeconds,
+      wrongWords: sub.wrongWords || '없음 (만점)',
+      txId: sub.txId,
+    };
+
+    try {
+      await fetch(effectiveUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      setTestStatus(`[${sub.studentName}] [${sub.unitTitle}] 성적이 구글 시트 [${courseClass}] 탭으로 성공적으로 전송되었습니다!`);
+      setTimeout(() => setTestStatus(null), 4500);
+    } catch (err: any) {
+      alert(`구글 시트 전송 오류: ${err.message || '네트워크 상태를 확인해 주세요.'}`);
+    }
+  };
+
+  // 모든 성적 구글 시트로 일괄 동기화
+  const handleSyncAllSubmissions = async () => {
+    const effectiveUrl = getEffectiveWebhookUrl(webhookUrl || teacherSettings.webhookUrl);
+    if (!effectiveUrl || !effectiveUrl.startsWith('http')) {
+      alert('유효한 구글 스프레드시트 Apps Script Webhook URL을 [구글 스프레드시트 연동] 탭에서 먼저 입력해 주세요.');
+      setActiveTab('webhook');
+      return;
+    }
+    if (submissions.length === 0) {
+      alert('동기화할 성적 제출 이력이 없습니다.');
+      return;
+    }
+
+    setTestStatus(`총 ${submissions.length}건의 성적을 구글 시트로 일괄 전송 중...`);
+
+    for (const sub of submissions) {
+      const courseClass = sub.courseClass || sub.gradeClass || '1A 한국어';
+      const payload = {
+        timestamp: sub.timestamp,
+        studentId: sub.studentId,
+        studentName: sub.studentName,
+        englishName: sub.englishName || '',
+        courseClass: courseClass,
+        gradeClass: courseClass,
+        unitTitle: sub.unitTitle,
+        score: sub.score,
+        correctCount: sub.correctCount,
+        wrongCount: sub.wrongCount,
+        totalCount: sub.totalCount,
+        timeSpentSeconds: sub.timeSpentSeconds,
+        wrongWords: sub.wrongWords || '없음 (만점)',
+        txId: sub.txId,
+      };
+
+      try {
+        await fetch(effectiveUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        // 시트 동시 쓰기 충돌 방지를 위한 순차 딜레이
+        await new Promise((resolve) => setTimeout(resolve, 350));
+      } catch {}
+    }
+
+    setTestStatus(`총 ${submissions.length}건의 성적이 구글 시트로 모두 동기화되었습니다!`);
+    setTimeout(() => setTestStatus(null), 5000);
   };
 
   const handleExportCSV = () => {
@@ -339,19 +717,31 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
       alert('제출된 성적 기록이 아직 없습니다.');
       return;
     }
-    const headers = ['학번', '한글성명', '영문성명', '수강분반', '단원', '점수', '정답수', '오답수', '소요시간(초)', '제출시각', 'TXID'];
+    const headers = [
+      '접속일자/제출일시',
+      '분반',
+      '학번',
+      '한글성명',
+      '영문성명',
+      '시험 제목',
+      '점수',
+      '정답/총문항',
+      '소요시간',
+      '오답 단어 목록',
+      '제출 고유ID',
+    ];
     const rows = submissions.map((s) => [
-      s.studentId,
-      s.studentName,
-      s.englishName || '',
-      s.courseClass || s.gradeClass || '',
-      s.unitTitle,
+      `"${s.timestamp}"`,
+      `"${s.courseClass || s.gradeClass || ''}"`,
+      `"${s.studentId}"`,
+      `"${s.studentName}"`,
+      `"${s.englishName || ''}"`,
+      `"${s.unitTitle}"`,
       s.score,
-      s.correctCount,
-      s.wrongCount,
-      s.timeSpentSeconds,
-      s.timestamp,
-      s.txId,
+      `"${s.correctCount} / ${s.totalCount}"`,
+      `"${s.timeSpentSeconds}초"`,
+      `"${s.wrongWords || '없음 (만점)'}"`,
+      `"${s.txId}"`,
     ]);
     const csvContent =
       'data:text/csv;charset=utf-8,\uFEFF' +
@@ -420,7 +810,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
               }`}
             >
               <span className="material-symbols-outlined text-[16px]">add_circle</span>
-              <span>새 단원 직접 추가</span>
+              <span>새 시험 등록</span>
             </button>
 
             <button
@@ -515,9 +905,9 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex flex-col">
-                          <div className="flex items-center gap-2">
-                            <span className="px-2 py-0.5 rounded bg-[#0c2340] text-white text-[10px] font-bold">
-                              {unit.unitNumber}단원
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="px-2.5 py-0.5 rounded-full bg-[#0c2340] text-white text-[11px] font-bold shadow-2xs">
+                              {unit.category || '1A 한국어'}
                             </span>
                             {unit.isPublished ? (
                               <span className="px-2 py-0.5 rounded bg-[#dcfce7] text-[#15803d] text-[10px] font-bold flex items-center gap-1">
@@ -556,7 +946,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                       {/* Actions */}
                       <div className="flex items-center justify-between pt-2 border-t border-[#e2e8f0] text-xs">
                         <span className="text-[11px] text-[#64748b]">
-                          {unit.words.length}문항 · 총 {unit.totalTimeLimitMinutes || 10}분
+                          출제 {Math.min(10, unit.words.length)}문항 (단어 풀: {unit.words.length}개) · 총 {unit.totalTimeLimitMinutes || 10}분
                         </span>
 
                         <div className="flex items-center gap-2">
@@ -600,17 +990,30 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                     <div className="flex items-center gap-2">
                       <span className="material-symbols-outlined text-[#0284c7] text-[20px]">edit_note</span>
                       <h4 className="text-[15px] font-bold text-[#0c2340]">
-                        선택된 단원 어휘 및 설정 수정 : [{currentEditingUnit.title}]
+                        선택된 시험 어휘 및 설정 수정 : [{currentEditingUnit.title}]
                       </h4>
                     </div>
                     <span className="text-xs text-[#64748b]">
-                      음운 분해 및 자모 결합 엔진 자동 적용
+                      선택형 퀴즈 힌트 블록 및 이미지 엔진 자동 연동
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div className="flex flex-col gap-1">
-                      <label className="text-xs font-bold text-[#0c2340]">단원 제목</label>
+                      <label className="text-xs font-bold text-[#0c2340]">과정 대분류</label>
+                      <select
+                        value={unitCategory}
+                        onChange={(e) => setUnitCategory(e.target.value as CourseCategory)}
+                        className="px-3 py-2 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7] font-semibold cursor-pointer"
+                      >
+                        <option value="1A 한국어">1A 한국어</option>
+                        <option value="1B 한국어">1B 한국어</option>
+                        <option value="2A 한국어">2A 한국어</option>
+                        <option value="2B 한국어">2B 한국어</option>
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-bold text-[#0c2340]">시험 제목</label>
                       <input
                         type="text"
                         value={unitTitle}
@@ -650,24 +1053,45 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                     />
                   </div>
 
-                  {/* Words Breakdown Preview */}
+                  {/* Words Breakdown Preview & Image Management */}
                   <div className="flex flex-col gap-2">
-                    <span className="text-xs font-bold text-[#64748b]">음운 분해 미리보기 (자모 매핑)</span>
-                    <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-2 bg-[#f8fafc] rounded-xl border border-[#e2e8f0]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-[#0c2340]">
+                        어휘 및 대표 이미지 매핑 (클릭하여 4종 추천 이미지 / PC 업로드로 변경)
+                      </span>
+                      <span className="text-[11px] text-[#0284c7]">
+                        단어 카드의 [이미지 변경]을 눌러 원하는 시각 자료를 지정하세요.
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-56 overflow-y-auto p-3 bg-[#f8fafc] rounded-xl border border-[#e2e8f0]">
                       {wordInputText
                         .split(/[\n,]+/)
                         .map((w) => w.trim())
                         .filter((w) => w.length > 0)
                         .map((word) => {
-                          const syllables = decomposeWord(word);
+                          const imgUrl = getWordDisplayImage(word);
                           return (
-                            <span
+                            <div
                               key={word}
-                              className="px-2.5 py-1 bg-white border border-[#e2e8f0] rounded-lg text-[11px] font-semibold text-[#0c2340] flex items-center gap-1 shadow-2xs"
+                              className="p-2.5 bg-white border border-[#e2e8f0] rounded-xl flex items-center gap-2.5 shadow-2xs hover:border-[#0c2340] transition-colors"
                             >
-                              <strong>{word}</strong>
-                              <span className="text-[10px] text-[#64748b]">({formatDecompositionText(syllables)})</span>
-                            </span>
+                              <img
+                                src={imgUrl}
+                                alt={word}
+                                className="w-11 h-11 rounded-lg object-cover bg-slate-100 border border-slate-200 shrink-0"
+                              />
+                              <div className="flex flex-col min-w-0 flex-1">
+                                <span className="font-bold text-xs text-[#0c2340] truncate">{word}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenImageEditor(word)}
+                                  className="mt-1 text-[10px] font-bold text-[#0284c7] hover:text-[#0369a1] flex items-center gap-0.5 cursor-pointer"
+                                >
+                                  <span className="material-symbols-outlined text-[13px]">image</span>
+                                  <span>이미지 변경</span>
+                                </button>
+                              </div>
+                            </div>
                           );
                         })}
                     </div>
@@ -687,77 +1111,167 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
             </div>
           )}
 
-          {/* TAB 2: 새 단원 직접 추가 */}
+          {/* TAB 2: 새 시험 직접 추가 */}
           {activeTab === 'add-unit' && (
             <form onSubmit={handleCreateNewUnit} className="bg-white rounded-2xl p-6 border border-[#e2e8f0] shadow-sm flex flex-col gap-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-[#e2e8f0]">
+              <div className="flex items-center gap-2 pb-3 border-b border-[#e2e8f0]">
                 <span className="material-symbols-outlined text-[#0284c7] text-[22px]">add_task</span>
                 <div>
-                  <h4 className="text-[16px] font-bold text-[#0c2340]">새 시험 단원 직접 등록</h4>
+                  <h4 className="text-[16px] font-bold text-[#0c2340]">새 시험 직접 등록</h4>
                   <p className="text-[12px] text-[#64748b]">
-                    단원 번호와 제목, 시험 단어 목록을 입력하면 음운 분해 엔진이 자동으로 문제를 생성합니다.
+                    시험제목, 시험일, 시험 시간 및 출제 단어 목록을 입력하여 새로운 단어 시험을 생성합니다.
                   </p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-[#0c2340]">단원 번호 *</label>
-                  <input
-                    type="number"
+              {/* 2열 구성: 1열(과정 대분류, 시험제목, 시험일, 시험 시간) / 2열(출제 단어 목록) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
+                {/* 1열: 과정 대분류, 시험제목, 시험일, 시험 시간 */}
+                <div className="flex flex-col gap-3.5">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-bold text-[#0c2340] flex items-center gap-1">
+                      <span>교육과정 대분류</span>
+                      <span className="text-red-500">*</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['1A 한국어', '1B 한국어', '2A 한국어', '2B 한국어'] as CourseCategory[]).map((cat) => (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => setNewExamCategory(cat)}
+                          className={`py-2 px-3 rounded-xl text-xs font-bold transition-all border text-center cursor-pointer ${
+                            newExamCategory === cat
+                              ? 'bg-[#0c2340] text-white border-[#0c2340] shadow-sm'
+                              : 'bg-[#f8fafc] text-[#475569] border-[#e2e8f0] hover:bg-white'
+                          }`}
+                        >
+                          {cat}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-bold text-[#0c2340] flex items-center gap-1">
+                      <span>시험제목</span>
+                      <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="예: [자모] 단모음 자음 단어 시험"
+                      value={newExamTitle}
+                      onChange={(e) => setNewExamTitle(e.target.value)}
+                      className="px-3.5 py-2.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7] font-semibold"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-bold text-[#0c2340] flex items-center gap-1">
+                      <span>시험일</span>
+                      <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={newExamDate}
+                      onChange={(e) => setNewExamDate(e.target.value)}
+                      className="px-3.5 py-2.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7] font-semibold cursor-pointer"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-bold text-[#0c2340] flex items-center gap-1">
+                      <span>시험 시간 (5분~15분)</span>
+                      <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={newExamTotalMinutes}
+                      onChange={(e) => setNewExamTotalMinutes(Number(e.target.value))}
+                      className="px-3.5 py-2.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7] font-semibold cursor-pointer"
+                    >
+                      {Array.from({ length: 11 }, (_, i) => i + 5).map((m) => (
+                        <option key={m} value={m}>
+                          {m}분 (총 {m * 60}초)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* 2열: 출제 단어 목록 */}
+                <div className="flex flex-col gap-1.5 h-full">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-[#0c2340] flex items-center gap-1">
+                      <span>출제 단어 목록 (쉼표 또는 줄바꿈으로 구분)</span>
+                      <span className="text-red-500">*</span>
+                    </label>
+                    <span className="text-[11px] font-bold text-[#0284c7]">
+                      입력 단어: {newExamWords.split(/[\n,]+/).filter((w) => w.trim()).length}개
+                    </span>
+                  </div>
+                  <textarea
+                    rows={8}
                     required
-                    value={newUnitNumber}
-                    onChange={(e) => setNewUnitNumber(Number(e.target.value))}
-                    className="px-3 py-2.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7]"
+                    placeholder="예: 영화, 음악, 여행, 등산, 사진, 요리, 수영, 축구, 산책, 게임"
+                    value={newExamWords}
+                    onChange={(e) => setNewExamWords(e.target.value)}
+                    className="w-full p-3.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7] font-mono leading-relaxed min-h-[175px]"
                   />
                 </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-[#0c2340]">총 시험 제한 시간 (5분~15분)</label>
-                  <select
-                    value={newUnitTotalMinutes}
-                    onChange={(e) => setNewUnitTotalMinutes(Number(e.target.value))}
-                    className="px-3 py-2.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7] font-semibold cursor-pointer"
-                  >
-                    {Array.from({ length: 11 }, (_, i) => i + 5).map((m) => (
-                      <option key={m} value={m}>
-                        {m}분 (총 {m * 60}초)
-                      </option>
-                    ))}
-                  </select>
+              </div>
+
+              {/* 하단 출제 단어 이미지 매핑 현황 미리보기 */}
+              {newExamWords.trim().length > 0 && (
+                <div className="flex flex-col gap-2 pt-2 border-t border-[#e2e8f0]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-[#0c2340]">
+                      출제 어휘 및 대표 이미지 매핑 (클릭하여 4종 추천 이미지 / PC 업로드로 변경)
+                    </span>
+                    <span className="text-[11px] text-[#0284c7]">
+                      총 {newExamWords.split(/[\n,]+/).filter((w) => w.trim()).length}개 단어
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-52 overflow-y-auto p-3 bg-[#f8fafc] rounded-xl border border-[#e2e8f0]">
+                    {newExamWords
+                      .split(/[\n,]+/)
+                      .map((w) => w.trim())
+                      .filter((w) => w.length > 0)
+                      .map((word) => {
+                        const imgUrl = getWordDisplayImage(word);
+                        return (
+                          <div
+                            key={word}
+                            className="p-2.5 bg-white border border-[#e2e8f0] rounded-xl flex items-center gap-2.5 shadow-2xs hover:border-[#0c2340] transition-colors"
+                          >
+                            <img
+                              src={imgUrl}
+                              alt={word}
+                              className="w-10 h-10 rounded-lg object-cover bg-slate-100 border border-slate-200 shrink-0"
+                            />
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <span className="font-bold text-xs text-[#0c2340] truncate">{word}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenImageEditor(word)}
+                                className="mt-0.5 text-[10px] font-bold text-[#0284c7] hover:text-[#0369a1] flex items-center gap-0.5 cursor-pointer"
+                              >
+                                <span className="material-symbols-outlined text-[12px]">image</span>
+                                <span>이미지 지정</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
                 </div>
-              </div>
+              )}
 
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-[#0c2340]">단원 제목 *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="예: 5단원: 주말 활동과 취미 어휘"
-                  value={newUnitTitle}
-                  onChange={(e) => setNewUnitTitle(e.target.value)}
-                  className="px-3 py-2.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7]"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-[#0c2340] flex items-center justify-between">
-                  <span>출제 단어 목록 (쉼표 또는 줄바꿈으로 구분) *</span>
-                </label>
-                <textarea
-                  rows={4}
-                  required
-                  placeholder="예: 영화, 음악, 여행, 등산, 사진, 요리, 수영, 축구, 산책, 게임"
-                  value={newUnitWords}
-                  onChange={(e) => setNewUnitWords(e.target.value)}
-                  className="p-3.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7] font-mono leading-relaxed"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#e2e8f0]">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#e2e8f0]">
                 <button
                   type="button"
                   onClick={() => setActiveTab('units')}
-                  className="px-4 py-2.5 rounded-xl text-xs font-semibold text-[#64748b] hover:bg-[#f1f5f9]"
+                  className="px-4 py-2.5 rounded-xl text-xs font-semibold text-[#64748b] hover:bg-[#f1f5f9] cursor-pointer"
                 >
                   취소
                 </button>
@@ -765,7 +1279,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                   type="submit"
                   className="px-6 py-2.5 rounded-xl bg-[#0c2340] hover:bg-[#163a66] text-white text-xs font-bold shadow-md cursor-pointer"
                 >
-                  새 단원 등록 및 게시하기
+                  새 시험 등록 및 게시하기
                 </button>
               </div>
             </form>
@@ -779,10 +1293,10 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                   <span className="material-symbols-outlined text-[#0284c7] text-[22px]">table_chart</span>
                   <div>
                     <h4 className="text-[16px] font-bold text-[#0c2340]">
-                      구글 스프레드시트 실시간 성적 수집 연동
+                      구글 스프레드시트 분반별 실시간 성적 수집 연동
                     </h4>
                     <p className="text-[12px] text-[#64748b]">
-                      학생이 시험을 제출하면 학번, 한글 성명, 영문 성명, 분반, 점수, 소요시간이 즉시 시트에 추가됩니다.
+                      학생이 시험을 제출하면 학번, 성명, 영문 성명, 분반, 점수, 소요시간, 오답 단어 목록이 수강 분반 탭([1A 한국어]~[2B 한국어])과 [전체 현황] 탭에 실시간으로 분리되어 자동 입력됩니다.
                     </p>
                   </div>
                 </div>
@@ -797,31 +1311,79 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                 </button>
               </div>
 
+              {/* 테스트 대상 분반 선택 카드 */}
+              <div className="flex flex-col gap-2 p-3.5 bg-[#f8fafc] rounded-xl border border-[#e2e8f0]">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-[#0c2340]">테스트 대상 분반 선택</span>
+                  <span className="text-[11px] text-[#64748b]">
+                    선택한 분반 전용 탭과 [전체 현황] 탭으로 동시에 테스트 행이 발송됩니다.
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {(['1A 한국어', '1B 한국어', '2A 한국어', '2B 한국어'] as CourseCategory[]).map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setSelectedTestClass(cat)}
+                      className={`py-2 px-3 rounded-xl text-xs font-bold transition-all border text-center cursor-pointer ${
+                        selectedTestClass === cat
+                          ? 'bg-[#0c2340] text-white border-[#0c2340] shadow-sm'
+                          : 'bg-white text-[#475569] border-[#e2e8f0] hover:bg-[#f1f5f9]'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 테스트 발송 학생 정보 안내 바 */}
+              <div className="flex items-center justify-between text-xs px-3.5 py-2.5 bg-[#f0f9ff] rounded-xl border border-[#bae6fd]">
+                <div className="flex items-center gap-2 text-[#0369a1] font-bold">
+                  <span className="material-symbols-outlined text-[18px]">account_circle</span>
+                  <span>연동 테스트 발송자: <strong>{student?.name || '최재민'} ({student?.studentId || '20100042'})</strong></span>
+                </div>
+                <span className="text-[11px] text-[#0284c7]">
+                  (현재 로그인된 학생 정보로 시트에 발송됩니다)
+                </span>
+              </div>
+
               <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="text"
                   value={webhookUrl}
-                  onChange={(e) => setWebhookUrl(e.target.value)}
+                  onChange={(e) => handleWebhookUrlChange(e.target.value)}
                   placeholder="https://script.google.com/macros/s/.../exec"
                   className="flex-1 p-3 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7] font-mono"
                 />
                 <button
                   type="button"
+                  disabled={isSendingWebhookTest}
                   onClick={handleTestWebhook}
-                  className="px-4 py-2.5 rounded-xl bg-[#f1f5f9] hover:bg-[#e2e8f0] text-[#0c2340] text-xs font-bold transition-colors flex items-center justify-center gap-1 cursor-pointer shrink-0"
+                  className="px-4 py-2.5 rounded-xl bg-[#0c2340] hover:bg-[#163a66] text-white text-xs font-bold transition-colors flex items-center justify-center gap-1 cursor-pointer shrink-0 disabled:opacity-60"
                 >
-                  <span className="material-symbols-outlined text-[16px] text-[#0284c7]">send</span>
-                  <span>연동 테스트</span>
+                  {isSendingWebhookTest ? (
+                    <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
+                  ) : (
+                    <span className="material-symbols-outlined text-[16px] text-[#38bdf8]">send</span>
+                  )}
+                  <span>[{selectedTestClass}] 테스트 전송</span>
                 </button>
               </div>
 
-              <div className="p-4 bg-[#f8fafc] rounded-xl border border-[#e2e8f0] flex flex-col gap-2 text-xs text-[#475569]">
-                <span className="font-bold text-[#0c2340]">간단 설정 방법:</span>
-                <ol className="list-decimal pl-4 flex flex-col gap-1 leading-relaxed">
-                  <li>선생님의 구글 스프레드시트 메뉴에서 [확장 프로그램] &gt; [Apps Script]를 클릭합니다.</li>
-                  <li>상단 [Apps Script 복사] 버튼을 누른 뒤 코드를 붙여넣고 저장합니다.</li>
-                  <li>우측 상단 [배포] &gt; [새 배포] &gt; 유형: 웹 앱 (액세스 권한: 모든 사용자)으로 배포합니다.</li>
-                  <li>발급된 웹 앱 URL을 위 입력창에 붙여넣고 저장하면 연동이 완료됩니다.</li>
+              <div className="p-4 bg-[#f8fafc] rounded-xl border border-[#e2e8f0] flex flex-col gap-2.5 text-xs text-[#475569]">
+                <span className="font-bold text-[#0c2340] flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[16px] text-[#0284c7]">help</span>
+                  <span>구글 스프레드시트 1분 연동 및 분반 탭 자동 생성 방법:</span>
+                </span>
+                <ol className="list-decimal pl-4 flex flex-col gap-1.5 leading-relaxed">
+                  <li>선생님의 구글 스프레드시트 메뉴에서 <strong>[확장 프로그램] &gt; [Apps Script]</strong>를 클릭합니다.</li>
+                  <li>상단 <strong>[Apps Script 복사]</strong> 버튼을 누른 뒤 에디터의 기존 코드를 지우고 붙여넣고 저장(Ctrl+S)합니다.</li>
+                  <li>
+                    <em>(선택 권장)</em> 에디터 상단 함수 선택에서 <strong>[setupClassSheets]</strong>를 선택하고 <strong>[실행]</strong>을 누르면 5개 탭([전체 현황], [1A 한국어]~[2B 한국어])과 11개 컬럼 헤더가 자동 생성됩니다.
+                  </li>
+                  <li>우측 상단 <strong>[배포] &gt; [새 배포]</strong> 클릭 &gt; 유형: <strong>웹 앱</strong> &gt; 액세스 권한: <strong>모든 사용자(Anyone)</strong>로 설정하고 배포합니다.</li>
+                  <li>발급된 웹 앱 URL을 위 입력창에 붙여넣고 <strong>[Webhook 설정 저장]</strong>을 누르면 완료됩니다.</li>
                 </ol>
               </div>
 
@@ -850,14 +1412,26 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                   <h4 className="text-[16px] font-bold text-[#0c2340]">실시간 수강생 성적 제출 로그</h4>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleExportCSV}
-                  className="px-3 py-1.5 rounded-lg bg-[#f1f5f9] hover:bg-[#e2e8f0] text-[#0c2340] text-xs font-bold flex items-center gap-1 cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-[16px]">download</span>
-                  <span>CSV 다운로드</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSyncAllSubmissions}
+                    className="px-3 py-1.5 rounded-lg bg-[#0c2340] hover:bg-[#163a66] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                    title="제출된 모든 성적을 구글 시트로 일괄 전송합니다."
+                  >
+                    <span className="material-symbols-outlined text-[16px] text-[#38bdf8]">cloud_upload</span>
+                    <span>구글 시트 일괄 전송 ({submissions.length}건)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleExportCSV}
+                    className="px-3 py-1.5 rounded-lg bg-[#f1f5f9] hover:bg-[#e2e8f0] text-[#0c2340] text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">download</span>
+                    <span>CSV 다운로드</span>
+                  </button>
+                </div>
               </div>
 
               {submissions.length === 0 ? (
@@ -875,14 +1449,19 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                         <th className="p-2.5">점수</th>
                         <th className="p-2.5">정답/문항</th>
                         <th className="p-2.5">시간</th>
+                        <th className="p-2.5">오답 단어</th>
                         <th className="p-2.5">제출시각</th>
+                        <th className="p-2.5 text-center">시트 전송</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#e2e8f0]">
                       {submissions.map((sub) => (
                         <tr key={sub.id} className="hover:bg-[#f8fafc]">
                           <td className="p-2.5 font-bold">
-                            {sub.studentName} ({sub.studentId})
+                            <div>{sub.studentName} ({sub.studentId})</div>
+                            {sub.englishName && (
+                              <div className="text-[10px] text-[#64748b] font-normal">{sub.englishName}</div>
+                            )}
                           </td>
                           <td className="p-2.5 text-[#64748b]">{sub.courseClass || sub.gradeClass}</td>
                           <td className="p-2.5">{sub.unitTitle}</td>
@@ -891,7 +1470,27 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                             {sub.correctCount} / {sub.totalCount}
                           </td>
                           <td className="p-2.5">{sub.timeSpentSeconds}초</td>
-                          <td className="p-2.5 text-[#64748b]">{sub.timestamp}</td>
+                          <td className="p-2.5">
+                            <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                              !sub.wrongWords || sub.wrongWords === '없음 (만점)'
+                                ? 'bg-emerald-50 text-emerald-700'
+                                : 'bg-rose-50 text-rose-700'
+                            }`}>
+                              {sub.wrongWords || '없음 (만점)'}
+                            </span>
+                          </td>
+                          <td className="p-2.5 text-[#64748b] text-[11px]">{sub.timestamp}</td>
+                          <td className="p-2.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleSyncSubmissionToSheet(sub)}
+                              className="px-2.5 py-1 bg-[#f0f9ff] hover:bg-[#e0f2fe] text-[#0284c7] font-bold text-[11px] rounded-lg border border-[#bae6fd] flex items-center gap-1 mx-auto cursor-pointer transition-colors shadow-2xs"
+                              title="이 성적을 구글 시트로 즉시 전송합니다."
+                            >
+                              <span className="material-symbols-outlined text-[13px]">send</span>
+                              <span>시트 전송</span>
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -904,11 +1503,79 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
           {/* TAB 5: 학생 계정 관리 & 비밀번호 초기화 */}
           {activeTab === 'students' && (
             <div className="flex flex-col gap-4">
+              {/* Supabase Cloud Connection Settings Card */}
+              <div className="bg-[#f8fafc] border border-[#e2e8f0] rounded-2xl p-4 sm:p-5 flex flex-col gap-3.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[20px] text-[#0284c7]">cloud_sync</span>
+                    <div>
+                      <h4 className="text-xs font-bold text-[#0c2340]">Supabase 클라우드 데이터베이스 연동</h4>
+                      <p className="text-[11px] text-[#64748b]">클라우드 DB에 저장된 학생 계정을 실시간으로 조회하고 비밀번호를 관리합니다.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 self-start sm:self-auto">
+                    <span className={`w-2 h-2 rounded-full ${isCloudActive ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                    <span className={`text-[11px] font-bold ${isCloudActive ? 'text-emerald-700' : 'text-amber-800'}`}>
+                      {isCloudActive ? 'Supabase 클라우드 연동됨' : '로컬 저장소 모드 (오프라인)'}
+                    </span>
+                  </div>
+                </div>
+
+                {cloudStatusMsg && (
+                  <div className={`p-2.5 rounded-xl text-xs font-semibold border flex items-center gap-2 ${
+                    cloudStatusMsg.ok ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'
+                  }`}>
+                    <span className="material-symbols-outlined text-[16px]">
+                      {cloudStatusMsg.ok ? 'check_circle' : 'error'}
+                    </span>
+                    <span>{cloudStatusMsg.message}</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-bold text-[#0c2340]">Supabase Project URL</label>
+                    <input
+                      type="text"
+                      value={cloudUrlInput}
+                      onChange={(e) => setCloudUrlInput(e.target.value)}
+                      placeholder="https://your-project.supabase.co"
+                      className="px-3 py-2 bg-white border border-[#cbd5e1] rounded-xl text-xs font-mono text-[#0c2340] outline-none focus:border-[#0284c7]"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-bold text-[#0c2340]">Supabase Anon Key (Public Key)</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="password"
+                        value={cloudKeyInput}
+                        onChange={(e) => setCloudKeyInput(e.target.value)}
+                        placeholder="eyJhbGciOi..."
+                        className="flex-1 px-3 py-2 bg-white border border-[#cbd5e1] rounded-xl text-xs font-mono text-[#0c2340] outline-none focus:border-[#0284c7]"
+                      />
+                      <button
+                        type="button"
+                        disabled={isTestingCloud}
+                        onClick={handleSaveAndTestCloud}
+                        className="px-3.5 py-2 bg-[#0c2340] hover:bg-[#163a66] text-white text-xs font-bold rounded-xl flex items-center gap-1 transition-colors cursor-pointer shrink-0 disabled:opacity-60"
+                      >
+                        {isTestingCloud ? (
+                          <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
+                        ) : (
+                          <span className="material-symbols-outlined text-[16px]">cloud_done</span>
+                        )}
+                        <span>연결 및 저장</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-bold text-[#0c2340]">등록된 학생 계정 관리</h3>
                   <p className="text-xs text-[#64748b]">
-                    Supabase 클라우드 DB에 가입된 학생 목록입니다. 학생이 비밀번호를 분실한 경우 <strong>'0000'</strong>으로 즉시 초기화할 수 있습니다.
+                    학생이 비밀번호를 분실한 경우 <strong>'0000'</strong>으로 즉시 초기화할 수 있습니다.
                   </p>
                 </div>
                 <button
@@ -936,6 +1603,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                       <tr>
                         <th className="py-3 px-4">학번 (Student ID)</th>
                         <th className="py-3 px-4">성명 (Name)</th>
+                        <th className="py-3 px-4">수강 분반</th>
                         <th className="py-3 px-4">이메일 (Email)</th>
                         <th className="py-3 px-4">현재 비밀번호</th>
                         <th className="py-3 px-4">가입일시</th>
@@ -948,6 +1616,11 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                           <td className="py-3 px-4 font-bold text-[#0c2340]">{st.student_id}</td>
                           <td className="py-3 px-4 font-semibold text-[#0c2340]">
                             {st.name} {st.english_name && <span className="text-[#64748b] font-normal">({st.english_name})</span>}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="px-2 py-0.5 rounded-full bg-[#f0f9ff] text-[#0284c7] font-bold border border-[#bae6fd] text-[11px]">
+                              {st.course_class || '1A 한국어'}
+                            </span>
                           </td>
                           <td className="py-3 px-4 text-[#475569]">{st.email}</td>
                           <td className="py-3 px-4 font-mono text-[#0284c7] font-bold">{st.password || '****'}</td>
@@ -988,6 +1661,270 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* 교사용 어휘 이미지 선택 및 교체 모달 */}
+      {editingWord && (
+        <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 select-none">
+          <div className="bg-white rounded-3xl w-full max-w-[620px] shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95">
+            {/* Modal Top Header */}
+            <div className="p-4 sm:p-5 bg-[#0c2340] text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white">
+                  <span className="material-symbols-outlined text-[20px] text-[#38bdf8]">image</span>
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold flex items-center gap-2">
+                    <span>[{editingWord}] 어휘 대표 이미지 설정</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-300">
+                    학생들의 퀴즈와 단어장에 노출될 최적의 시각 힌트 이미지를 선택하세요.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingWord(null)}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 overflow-y-auto flex flex-col gap-4">
+              {/* Selected Image Preview */}
+              <div className="flex flex-col sm:flex-row items-center gap-4 p-3.5 bg-[#f8fafc] rounded-2xl border border-[#e2e8f0]">
+                <div className="relative w-36 h-36 rounded-xl overflow-hidden bg-slate-200 border border-slate-300 shrink-0 shadow-inner">
+                  <img
+                    src={selectedImageUrl}
+                    alt={editingWord}
+                    className="w-full h-full object-cover"
+                  />
+                  <span className="absolute bottom-1.5 left-1.5 px-2 py-0.5 rounded bg-black/60 text-white text-[10px] font-bold backdrop-blur-xs">
+                    현재 선택됨
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1.5 flex-1 text-center sm:text-left">
+                  <div className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0c2340]">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span>선택된 이미지 미리보기</span>
+                  </div>
+                  <p className="text-[11px] text-[#64748b] leading-relaxed">
+                    이 이미지는 <strong>[{editingWord}]</strong> 단어의 시험 시각 힌트 및 단어장 카드에 즉시 적용됩니다.
+                  </p>
+                  <p className="text-[10px] text-slate-400 break-all line-clamp-2 font-mono">
+                    {selectedImageUrl.startsWith('data:') ? '로컬 이미지 파일 (Base64)' : selectedImageUrl}
+                  </p>
+                </div>
+              </div>
+
+              {/* Mode Tabs: 추천 4종 | 내 PC 업로드 | 웹 URL | AI 생성 */}
+              <div className="grid grid-cols-4 gap-1.5 bg-[#f1f5f9] p-1 rounded-xl text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setImageTabMode('preset')}
+                  className={`py-2 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                    imageTabMode === 'preset'
+                      ? 'bg-white text-[#0c2340] shadow-xs'
+                      : 'text-[#64748b] hover:text-[#0c2340]'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[15px]">auto_awesome</span>
+                  <span>추천 4종</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setImageTabMode('upload')}
+                  className={`py-2 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                    imageTabMode === 'upload'
+                      ? 'bg-white text-[#0c2340] shadow-xs'
+                      : 'text-[#64748b] hover:text-[#0c2340]'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[15px]">upload_file</span>
+                  <span>PC 업로드</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setImageTabMode('url')}
+                  className={`py-2 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                    imageTabMode === 'url'
+                      ? 'bg-white text-[#0c2340] shadow-xs'
+                      : 'text-[#64748b] hover:text-[#0c2340]'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[15px]">link</span>
+                  <span>직접 URL</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setImageTabMode('ai')}
+                  className={`py-2 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                    imageTabMode === 'ai'
+                      ? 'bg-white text-[#0c2340] shadow-xs'
+                      : 'text-[#64748b] hover:text-[#0c2340]'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[15px]">psychology</span>
+                  <span>AI 생성</span>
+                </button>
+              </div>
+
+              {/* Mode 1: 추천 고화질 4종 선택 */}
+              {imageTabMode === 'preset' && (
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs font-bold text-[#0c2340] flex items-center gap-1">
+                    <span>검증된 고화질 추천 이미지 (원클릭 선택)</span>
+                  </span>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    {getCandidateImagesForWord(editingWord).map((url, idx) => {
+                      const isSelected = selectedImageUrl === url;
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setSelectedImageUrl(url)}
+                          className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all group cursor-pointer ${
+                            isSelected
+                              ? 'border-[#0c2340] ring-4 ring-[#0c2340]/20 shadow-md scale-[1.02]'
+                              : 'border-[#e2e8f0] hover:border-[#0284c7]'
+                          }`}
+                        >
+                          <img
+                            src={url}
+                            alt={`${editingWord}-${idx}`}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          />
+                          {isSelected && (
+                            <div className="absolute inset-0 bg-[#0c2340]/25 flex items-center justify-center">
+                              <span className="material-symbols-outlined text-white text-[28px] drop-shadow">
+                                check_circle
+                              </span>
+                            </div>
+                          )}
+                          <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/60 text-white text-[9px] font-bold">
+                            후보 {idx + 1}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Mode 2: 내 PC 직접 업로드 */}
+              {imageTabMode === 'upload' && (
+                <div className="flex flex-col gap-3 p-4 bg-[#f8fafc] rounded-2xl border border-[#e2e8f0] text-center">
+                  <div className="w-12 h-12 rounded-2xl bg-[#0c2340]/5 text-[#0c2340] flex items-center justify-center mx-auto">
+                    <span className="material-symbols-outlined text-[24px]">cloud_upload</span>
+                  </div>
+                  <div>
+                    <h5 className="text-xs font-bold text-[#0c2340]">선생님 PC의 사진/그림 파일 직접 등록</h5>
+                    <p className="text-[11px] text-[#64748b] mt-0.5">
+                      외부 서버 트래픽이나 장애 없이 100% 안정적으로 학생들에게 노출됩니다.
+                    </p>
+                  </div>
+                  <label className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#0c2340] hover:bg-[#163a66] text-white text-xs font-bold rounded-xl cursor-pointer shadow-sm transition-colors mx-auto">
+                    <span className="material-symbols-outlined text-[18px]">photo_camera</span>
+                    <span>내 PC에서 이미지 파일 선택</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              )}
+
+              {/* Mode 3: 웹 이미지 URL 직접 입력 */}
+              {imageTabMode === 'url' && (
+                <div className="flex flex-col gap-2 p-4 bg-[#f8fafc] rounded-2xl border border-[#e2e8f0]">
+                  <label className="text-xs font-bold text-[#0c2340]">웹 이미지 주소 (URL) 입력</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      placeholder="https://images.unsplash.com/..."
+                      value={customUrlInput}
+                      onChange={(e) => setCustomUrlInput(e.target.value)}
+                      className="flex-1 px-3 py-2 bg-white border border-[#cbd5e1] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (customUrlInput.trim().startsWith('http')) {
+                          setSelectedImageUrl(customUrlInput.trim());
+                        } else {
+                          alert('올바른 이미지 URL(http:// 또는 https://)을 입력해 주세요.');
+                        }
+                      }}
+                      className="px-4 py-2 bg-[#0c2340] text-white text-xs font-bold rounded-xl hover:bg-[#163a66] cursor-pointer shrink-0"
+                    >
+                      적용
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Mode 4: AI 이미지 생성 */}
+              {imageTabMode === 'ai' && (
+                <div className="flex flex-col gap-2 p-4 bg-[#f8fafc] rounded-2xl border border-[#e2e8f0]">
+                  <label className="text-xs font-bold text-[#0c2340] flex items-center justify-between">
+                    <span>AI 이미지 생성 프롬프트 (영문 입력 권장)</span>
+                    <span className="text-[10px] text-amber-600 font-semibold">
+                      *외부 AI 서비스 이용 한도 초과 시 추천 4종 또는 PC 업로드를 권장합니다.
+                    </span>
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={aiPromptInput}
+                      onChange={(e) => setAiPromptInput(e.target.value)}
+                      placeholder="예: fresh cucumber, food photography, white background"
+                      className="flex-1 px-3 py-2 bg-white border border-[#cbd5e1] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7]"
+                    />
+                    <button
+                      type="button"
+                      disabled={isGeneratingAi}
+                      onClick={handleGenerateAiImage}
+                      className="px-4 py-2 bg-[#0284c7] hover:bg-[#0369a1] text-white text-xs font-bold rounded-xl flex items-center gap-1 cursor-pointer shrink-0 disabled:opacity-50"
+                    >
+                      {isGeneratingAi ? (
+                        <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
+                      ) : (
+                        <span className="material-symbols-outlined text-[16px]">psychology</span>
+                      )}
+                      <span>{isGeneratingAi ? '생성 중...' : 'AI 생성'}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-[#f8fafc] border-t border-[#e2e8f0] flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingWord(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-[#64748b] hover:bg-[#e2e8f0] cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleApplyImageChange}
+                className="px-5 py-2 rounded-xl bg-[#0c2340] hover:bg-[#163a66] text-white text-xs font-bold shadow-md transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <span className="material-symbols-outlined text-[16px]">check</span>
+                <span>이 이미지로 확정 및 저장</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

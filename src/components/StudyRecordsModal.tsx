@@ -1,32 +1,114 @@
-import React from 'react';
-import { LearnerProfile, TestSubmission } from '../types';
+import React, { useState } from 'react';
+import { LearnerProfile, TestSubmission, CourseCategory } from '../types';
 
 interface StudyRecordsModalProps {
   student: LearnerProfile;
   submissions: TestSubmission[];
   onSelectUnitToRetake: (unitId: string) => void;
+  onUpdateCourseClass?: (newClass: CourseCategory) => void;
+  onNavigateToTest?: () => void;
 }
 
 export const StudyRecordsModal: React.FC<StudyRecordsModalProps> = ({
   student,
   submissions,
   onSelectUnitToRetake,
+  onUpdateCourseClass,
+  onNavigateToTest,
 }) => {
+  const [classChangeToast, setClassChangeToast] = useState<string | null>(null);
+
+  const handleSelectClass = (cls: CourseCategory) => {
+    if (onUpdateCourseClass) {
+      onUpdateCourseClass(cls);
+      setClassChangeToast(`수강 분반이 [${cls}]로 변경되었습니다. 이제 [${cls}]의 시험과 단어가 제공됩니다.`);
+      setTimeout(() => setClassChangeToast(null), 3500);
+    }
+  };
+
   return (
-    <div className="w-full max-w-[840px] mx-auto px-4 sm:px-6 py-6 sm:py-10 select-none">
+    <div className="w-full max-w-[840px] mx-auto px-4 sm:px-6 py-6 sm:py-10 select-none relative">
+      {/* Class Change Feedback Toast */}
+      {classChangeToast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-[#0c2340] text-white px-5 py-3 rounded-2xl shadow-xl border border-white/20 flex items-center gap-2.5 animate-bounce text-xs font-bold">
+          <span className="material-symbols-outlined text-[18px] text-[#38bdf8]">check_circle</span>
+          <span>{classChangeToast}</span>
+        </div>
+      )}
+
       <div className="flex flex-col gap-6">
         {/* Header */}
-        <div className="flex flex-col gap-1">
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#f0f9ff] text-[#0284c7] text-xs font-bold self-start mb-1 border border-[#bae6fd]">
-            <span className="material-symbols-outlined text-[14px]">history_edu</span>
-            <span>대진대학교 학업 성취도 평가</span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#f0f9ff] text-[#0284c7] text-xs font-bold self-start mb-1 border border-[#bae6fd]">
+              <span className="material-symbols-outlined text-[14px]">badge</span>
+              <span>대진대학교 학생 마이페이지 (My Page)</span>
+            </div>
+            <h1 className="text-[24px] font-extrabold text-[#0c2340] tracking-tight">
+              {student.name} 수강생의 마이페이지 & 성적표
+            </h1>
+            <p className="text-[13px] text-[#64748b]">
+              학번: <strong>{student.studentId}</strong> · 수강 분반: <strong>{student.courseClass || '1A 한국어'}</strong>
+            </p>
           </div>
-          <h1 className="text-[24px] font-extrabold text-[#0c2340] tracking-tight">
-            {student.name} 수강생의 시험 이력
-          </h1>
-          <p className="text-[13px] text-[#64748b]">
-            세종한국어 단어 시험 응시 결과와 대진대학교 구글 시트 자동 제출 내역입니다.
+
+          {onNavigateToTest && (
+            <button
+              type="button"
+              onClick={onNavigateToTest}
+              className="h-11 px-5 rounded-xl bg-[#0c2340] hover:bg-[#163a66] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer shrink-0"
+            >
+              <span>시험 보러 가기</span>
+              <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+            </button>
+          )}
+        </div>
+
+        {/* 내 수강 분반 선택 카드 (방식 3: 수강 분반별 시험 연동) */}
+        <div className="bg-white rounded-2xl p-5 border border-[#e2e8f0] shadow-sm flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-[#0284c7] text-[22px]">school</span>
+              <h3 className="text-[16px] font-extrabold text-[#0c2340]">내 수강 분반 선택</h3>
+            </div>
+            <span className="text-[12px] font-bold text-[#0284c7] bg-[#f0f9ff] px-3 py-1 rounded-full border border-[#bae6fd]">
+              현재 선택: {student.courseClass || '1A 한국어'}
+            </span>
+          </div>
+
+          <p className="text-xs text-[#64748b]">
+            본인이 수강하는 한국어 교육과정 분반을 선택하세요. 선택한 분반에 맞추어 단어 시험 목록과 어휘장이 자동으로 맞춤 제공됩니다.
           </p>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+            {(['1A 한국어', '1B 한국어', '2A 한국어', '2B 한국어'] as CourseCategory[]).map((cls) => {
+              const isSelected = (student.courseClass || '1A 한국어') === cls;
+              return (
+                <button
+                  key={cls}
+                  type="button"
+                  onClick={() => handleSelectClass(cls)}
+                  className={`p-3.5 rounded-xl border text-center transition-all flex flex-col items-center gap-1.5 cursor-pointer ${
+                    isSelected
+                      ? 'bg-[#0c2340] text-white border-[#0c2340] shadow-md ring-2 ring-[#0284c7]/30 scale-[1.02]'
+                      : 'bg-[#f8fafc] text-[#475569] border-[#e2e8f0] hover:bg-white hover:border-[#94a3b8]'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-extrabold">{cls}</span>
+                    {isSelected && (
+                      <span className="material-symbols-outlined text-[16px] text-[#38bdf8]">
+                        check_circle
+                      </span>
+                    )}
+                  </div>
+                  <span className={`text-[10px] font-semibold ${isSelected ? 'text-[#bae6fd]' : 'text-[#64748b]'}`}>
+                    {cls.startsWith('1') ? '초급 한국어 과정' : '중급 한국어 과정'}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Summary Stat Cards */}
