@@ -55,7 +55,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
   const [activeTab, setActiveTab] = useState<'units' | 'add-unit' | 'webhook' | 'logs' | 'students'>('units');
   const [selectedUnitId, setSelectedUnitId] = useState<string>(units[0]?.id || 'sejong-unit-1');
 
-  // 관리자 비밀번호 검증 상태 (기본: 0000)
+  // 관리자 비밀번호 검증 상태 (비밀번호: 2525)
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(false);
   const [adminPinInput, setAdminPinInput] = useState<string>('');
   const [adminPinError, setAdminPinError] = useState<string | null>(null);
@@ -207,14 +207,14 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     }
   };
 
-  // 관리자 비밀번호 검증 (기본: 0000)
+  // 관리자 비밀번호 검증 (비밀번호: 2525)
   const handleVerifyAdminPin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (adminPinInput.trim() === '0000') {
+    if (adminPinInput.trim() === '2525') {
       setIsAdminAuthenticated(true);
       setAdminPinError(null);
     } else {
-      setAdminPinError('관리자 비밀번호가 일치하지 않습니다. (기본 비밀번호: 0000)');
+      setAdminPinError('관리자 비밀번호가 일치하지 않습니다.');
     }
   };
 
@@ -237,7 +237,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
           </div>
           <h3 className="text-[18px] font-extrabold text-[#0c2340]">교사용 관리자 인증</h3>
           <p className="text-xs text-[#64748b] mt-1 mb-5">
-            시험 관리 및 학생 설정에 접근하려면 관리자 비밀번호(기본: <strong>0000</strong>)를 입력해 주세요.
+            시험 관리 및 학생 설정에 접근하려면 관리자 비밀번호를 입력해 주세요.
           </p>
           <form onSubmit={handleVerifyAdminPin} className="w-full flex flex-col gap-3">
             <input
@@ -248,7 +248,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
                 setAdminPinInput(e.target.value);
                 setAdminPinError(null);
               }}
-              placeholder="비밀번호 입력 (기본: 0000)"
+              placeholder="관리자 비밀번호 입력"
               className="w-full px-4 py-3 bg-[#f8fafc] text-center text-base font-bold tracking-widest text-[#0c2340] rounded-xl border border-[#e2e8f0] focus:border-[#0c2340] outline-none"
             />
             {adminPinError && (

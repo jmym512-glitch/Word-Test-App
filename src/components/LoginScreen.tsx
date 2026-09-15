@@ -53,9 +53,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
   });
 
-  // 로그인 폼 상태 (초기값으로 테스트 계정 1111 세팅)
-  const [loginId, setLoginId] = useState(initialProfile?.studentId || '1111');
-  const [loginPw, setLoginPw] = useState('1111');
+  // 로그인 폼 상태
+  const [loginId, setLoginId] = useState(initialProfile?.studentId || '');
+  const [loginPw, setLoginPw] = useState('');
 
   // 회원가입 폼 상태 (학번, 비밀번호, 이름, 이메일)
   const [signupId, setSignupId] = useState('');
@@ -207,13 +207,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       }
 
       setIsLoading(false);
-      if (!isSupabaseConfigured()) {
-        setErrorMessage(
-          '학번 또는 비밀번호가 일치하지 않습니다. 현재 로컬 오프라인 모드로 실행 중이며 Supabase 클라우드 DB 키가 연결되지 않아 클라우드 학생 계정을 조회할 수 없습니다. 상단 [🔑 DB 연결 설정]을 통해 Supabase Anon Key를 입력하시거나, 로컬 테스트 계정(학번: 1111 / PW: 1111)으로 로그인해 주세요.'
-        );
-      } else {
-        setErrorMessage('학번 또는 비밀번호가 일치하지 않습니다. (Invalid Student ID or Password.)');
-      }
+      setErrorMessage('학번 또는 비밀번호가 일치하지 않습니다. (Invalid Student ID or Password.)');
     } catch (err: any) {
       setIsLoading(false);
       setErrorMessage(`로그인 처리 중 오류가 발생했습니다: ${err.message || '다시 시도해 주세요.'}`);
@@ -448,25 +442,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col justify-center items-center p-4 select-none">
       {/* Top Header Shortcut */}
-      <header className="w-full max-w-[440px] flex justify-between items-center mb-4">
-        {/* Supabase Status Button */}
-        <button
-          type="button"
-          onClick={() => {
-            setIsSupabaseModalOpen(true);
-            setSupabaseConnStatus(null);
-          }}
-          className={`text-[11px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 transition-all cursor-pointer border ${
-            isCloudConfigured
-              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 shadow-2xs'
-              : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 animate-pulse'
-          }`}
-          title="클라우드 Supabase DB 연결 상태 확인 및 키 설정"
-        >
-          <span className={`w-2 h-2 rounded-full ${isCloudConfigured ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-          <span>{isCloudConfigured ? 'Supabase 클라우드 연동됨' : '🔑 Supabase DB 연결 설정'}</span>
-        </button>
-
+      <header className="w-full max-w-[440px] flex justify-end items-center mb-4">
         <button
           type="button"
           onClick={onOpenTeacherSettings}
@@ -525,7 +501,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 required
                 value={loginId}
                 onChange={(e) => setLoginId(e.target.value)}
-                placeholder="학번 입력 / Student ID (테스트: 1111)"
+                placeholder="학번 입력 / Student ID"
                 className="w-full px-3.5 py-3 bg-[#f8fafc] focus:bg-white text-sm text-[#0c2340] rounded-xl border border-[#e2e8f0] focus:border-[#0c2340] outline-none transition-all"
               />
             </div>
@@ -542,7 +518,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 required
                 value={loginPw}
                 onChange={(e) => setLoginPw(e.target.value)}
-                placeholder="비밀번호 입력 / Password (테스트: 1111)"
+                placeholder="비밀번호 입력 / Password"
                 className="w-full px-3.5 py-3 bg-[#f8fafc] focus:bg-white text-sm text-[#0c2340] rounded-xl border border-[#e2e8f0] focus:border-[#0c2340] outline-none transition-all"
               />
             </div>
@@ -582,22 +558,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 <span>로그인 (Login)</span>
               )}
             </button>
-
-            {/* Test Account Quick Fill Hint */}
-            <div className="bg-[#f8fafc] rounded-xl p-2.5 border border-[#e2e8f0] flex items-center justify-between text-xs text-[#64748b]">
-              <span>테스트 계정 (Test): <strong>1111</strong> / <strong>1111</strong></span>
-              <button
-                type="button"
-                onClick={() => {
-                  setLoginId('1111');
-                  setLoginPw('1111');
-                  setErrorMessage(null);
-                }}
-                className="text-[11px] text-[#0284c7] font-bold hover:underline cursor-pointer"
-              >
-                자동 입력 (Auto Fill)
-              </button>
-            </div>
 
             {/* Switch to SignUp (Bilingual English translation provided as requested) */}
             <div className="pt-2 text-center text-xs text-[#64748b] flex items-center justify-center gap-1.5 flex-wrap">
