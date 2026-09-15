@@ -8,7 +8,7 @@ import {
   WordItem,
   CourseCategory,
 } from './types';
-import { INITIAL_UNITS, SEJONG_PRESET_UNITS, saveCustomVocabImage } from './data/defaultUnits';
+import { INITIAL_UNITS, SEJONG_PRESET_UNITS, JAMO_UNIT, saveCustomVocabImage } from './data/defaultUnits';
 import { Header } from './components/Header';
 import { LoginScreen } from './components/LoginScreen';
 import { UnitSelectScreen } from './components/UnitSelectScreen';
@@ -29,36 +29,28 @@ export default function App() {
   const [student, setStudent] = useState<LearnerProfile | null>(() => {
     try {
       const stored = localStorage.getItem('daejin_current_student');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        // 이전 테스트 기본값(마이클 첸/20261042)이 남아있을 경우 현재 사용자(최재민/20100042)로 갱신
-        if (parsed.name === '마이클 첸' || parsed.studentId === '20261042') {
-          const updated: LearnerProfile = {
+      return stored
+        ? JSON.parse(stored)
+        : {
             studentId: '20100042',
             name: '최재민',
             englishName: 'Jaemin Choi',
-            courseClass: parsed.courseClass || '1A 한국어',
+            courseClass: '1A 한국어',
+            gradeClass: '1A 한국어',
             institution: '대진대학교 국제교류원 한국어교육센터',
             nationality: '대한민국',
-            gradeClass: parsed.gradeClass || '1A 한국어',
-            school: '대진대학교 국제교류원 한국어교육센터',
           };
-          localStorage.setItem('daejin_current_student', JSON.stringify(updated));
-          return updated;
-        }
-        return parsed;
-      }
-    } catch {}
-    return {
-      studentId: '20100042',
-      name: '최재민',
-      englishName: 'Jaemin Choi',
-      courseClass: '1A 한국어',
-      institution: '대진대학교 국제교류원 한국어교육센터',
-      nationality: '대한민국',
-      gradeClass: '1A 한국어',
-      school: '대진대학교 국제교류원 한국어교육센터',
-    };
+    } catch {
+      return {
+        studentId: '20100042',
+        name: '최재민',
+        englishName: 'Jaemin Choi',
+        courseClass: '1A 한국어',
+        gradeClass: '1A 한국어',
+        institution: '대진대학교 국제교류원 한국어교육센터',
+        nationality: '대한민국',
+      };
+    }
   });
 
   // 단원 목록 (로컬스토리지 연동 및 대분류 카테고리 보정)
@@ -67,9 +59,30 @@ export default function App() {
       const stored = localStorage.getItem('daejin_units');
       if (stored) {
         const parsed: ExamUnit[] = JSON.parse(stored);
-        return parsed.map((u, i) => ({
+        const hasJamo = parsed.some(
+          (u) => u.id === 'sejong-unit-jamo' || u.title.includes('자모')
+        );
+        let updatedList: ExamUnit[];
+        if (!hasJamo) {
+          updatedList = [JAMO_UNIT, ...parsed];
+        } else {
+          updatedList = parsed.map((u) => {
+            if (u.id === 'sejong-unit-jamo' || u.title.includes('자모')) {
+              return {
+                ...JAMO_UNIT,
+                category: '1A 한국어',
+                isPublished: true,
+                status: u.status || 'available',
+                score: u.score,
+                completedAt: u.completedAt,
+              };
+            }
+            return u;
+          });
+        }
+        return updatedList.map((u, i) => ({
           ...u,
-          category: u.category || (i < 2 ? '1A 한국어' : '1B 한국어'),
+          category: u.category || (i < 3 ? '1A 한국어' : '1B 한국어'),
         }));
       }
       return INITIAL_UNITS;
