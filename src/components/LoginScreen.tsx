@@ -53,8 +53,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
   });
 
-  // 로그인 폼 상태
-  const [loginId, setLoginId] = useState(initialProfile?.studentId || '');
+  // 로그인 폼 상태 (자동 입력 없이 항상 빈 값으로 시작)
+  const [loginId, setLoginId] = useState('');
   const [loginPw, setLoginPw] = useState('');
 
   // 회원가입 폼 상태 (학번, 비밀번호, 이름, 이메일)
@@ -488,7 +488,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
         {/* 1. LOGIN MODE */}
         {mode === 'login' ? (
-          <form onSubmit={handleLoginSubmit} className="flex flex-col gap-4">
+          <form onSubmit={handleLoginSubmit} className="flex flex-col gap-4" autoComplete="off">
             {/* 학번 / Student ID */}
             <div className="flex flex-col gap-1 text-left">
               <label htmlFor="loginId" className="text-xs font-bold text-[#0c2340] flex items-center justify-between">
@@ -497,12 +497,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               </label>
               <input
                 id="loginId"
+                name="studentId"
                 type="text"
                 required
                 value={loginId}
                 onChange={(e) => setLoginId(e.target.value)}
-                placeholder="학번 입력 / Student ID"
-                className="w-full px-3.5 py-3 bg-[#f8fafc] focus:bg-white text-sm text-[#0c2340] rounded-xl border border-[#e2e8f0] focus:border-[#0c2340] outline-none transition-all"
+                placeholder="학번 입력/Student ID"
+                autoComplete="off"
+                data-lpignore="true"
+                spellCheck={false}
+                className="w-full px-3.5 py-3 bg-[#f8fafc] focus:bg-white text-sm text-[#0c2340] rounded-xl border border-[#e2e8f0] focus:border-[#0c2340] outline-none transition-all placeholder:text-[#94a3b8]"
               />
             </div>
 
@@ -514,12 +518,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               </label>
               <input
                 id="loginPw"
+                name="password"
                 type="password"
                 required
                 value={loginPw}
                 onChange={(e) => setLoginPw(e.target.value)}
-                placeholder="비밀번호 입력 / Password"
-                className="w-full px-3.5 py-3 bg-[#f8fafc] focus:bg-white text-sm text-[#0c2340] rounded-xl border border-[#e2e8f0] focus:border-[#0c2340] outline-none transition-all"
+                placeholder="비밀번호 입력/Password"
+                autoComplete="new-password"
+                data-lpignore="true"
+                className="w-full px-3.5 py-3 bg-[#f8fafc] focus:bg-white text-sm text-[#0c2340] rounded-xl border border-[#e2e8f0] focus:border-[#0c2340] outline-none transition-all placeholder:text-[#94a3b8]"
               />
             </div>
 

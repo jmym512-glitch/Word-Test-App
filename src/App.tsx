@@ -390,7 +390,6 @@ export default function App() {
       <main className={`flex-1 flex flex-col ${currentTab !== 'login' ? 'pt-16' : ''}`}>
         {currentTab === 'login' && (
           <LoginScreen
-            initialProfile={student || undefined}
             onLogin={handleLogin}
             onOpenTeacherSettings={() => setIsTeacherModalOpen(true)}
           />
