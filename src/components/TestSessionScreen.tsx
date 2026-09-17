@@ -289,7 +289,7 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
                   Meaning: <span className="text-[#0284c7]">{displayEnglishMeaning}</span>
                 </span>
                 <span className="px-2 py-0.5 rounded-full bg-[#f1f5f9] text-[#475569] text-xs font-extrabold border border-[#e2e8f0]">
-                  {targetWord.length}글자
+                  {targetWord.length} {targetWord.length === 1 ? 'Letter' : 'Letters'}
                 </span>
               </div>
             </div>
@@ -320,7 +320,7 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
             >
               {typedAnswer.length === 0 ? (
                 <span className="text-[#94a3b8] text-sm sm:text-base font-semibold">
-                  단어를 입력하세요 (예: {targetWord.length}글자)
+                  단어를 입력하세요 ({targetWord.length} {targetWord.length === 1 ? 'Letter' : 'Letters'})
                 </span>
               ) : (
                 <div className="flex items-center justify-center gap-2 tracking-widest">
