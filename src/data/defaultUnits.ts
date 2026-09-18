@@ -91,6 +91,8 @@ export const VOCAB_IMAGES: Record<string, string> = {
   '허리': 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=600&auto=format&fit=crop&q=80',
 };
 
+export const DAEJIN_DATA_VERSION = 'v20260918_3';
+
 // 로컬 스토리지에 저장된 교사 생성/커스텀 어휘 이미지 조회
 export function getCustomVocabImages(): Record<string, string> {
   try {
@@ -110,6 +112,34 @@ export function saveCustomVocabImage(word: string, imageUrl: string): void {
   } catch (e) {
     console.error('Failed to save custom vocab image', e);
   }
+}
+
+// 단어의 커스텀 이미지 설정을 해제하고 공식 기본 이미지로 복구
+export function removeCustomVocabImage(word: string): void {
+  try {
+    const current = getCustomVocabImages();
+    if (word in current) {
+      delete current[word];
+      localStorage.setItem('daejin_custom_vocab_images', JSON.stringify(current));
+    }
+  } catch (e) {
+    console.error('Failed to remove custom vocab image', e);
+  }
+}
+
+// 모든 커스텀 어휘 이미지 캐시 초기화
+export function clearCustomVocabImages(): void {
+  try {
+    localStorage.removeItem('daejin_custom_vocab_images');
+  } catch (e) {
+    console.error('Failed to clear custom vocab images', e);
+  }
+}
+
+// 어휘의 공식 기본 제공 이미지 URL 반환
+export function getDefaultVocabImage(word: string): string {
+  if (VOCAB_IMAGES[word]) return VOCAB_IMAGES[word];
+  return 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=600&auto=format&fit=crop&q=80';
 }
 
 // 어휘의 최신 이미지 URL 반환 (커스텀 생성 > 기본 딕셔너리 > 폴백)

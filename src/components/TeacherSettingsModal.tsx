@@ -7,6 +7,8 @@ import {
   createWordItem,
   getCandidateImagesForWord,
   getWordDisplayImage,
+  getDefaultVocabImage,
+  removeCustomVocabImage,
   saveCustomVocabImage,
 } from '../data/defaultUnits';
 import {
@@ -100,6 +102,17 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     (currentEditingUnit?.category as CourseCategory) || '1A 한국어'
   );
   const [unitTotalMinutes, setUnitTotalMinutes] = useState<number>(currentEditingUnit?.totalTimeLimitMinutes || 10);
+  const [quickWordInput, setQuickWordInput] = useState<string>('');
+
+  // 모달 열림 또는 선택 단원 변경 시 편집 폼 자동 동기화
+  useEffect(() => {
+    if (isOpen && currentEditingUnit) {
+      setWordInputText(currentEditingUnit.words.map((w) => w.word).join(', '));
+      setUnitTitle(currentEditingUnit.title);
+      setUnitCategory((currentEditingUnit.category as CourseCategory) || '1A 한국어');
+      setUnitTotalMinutes(currentEditingUnit.totalTimeLimitMinutes || 10);
+    }
+  }, [isOpen, selectedUnitId]);
 
   // 새 시험 추가 폼 상태 (과정 대분류, 시험제목, 시험일, 시험 시간, 출제 단어)
   const [newExamCategory, setNewExamCategory] = useState<CourseCategory>('1A 한국어');
@@ -287,6 +300,72 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     }
   };
 
+  // 개별 단어 즉시 삭제 기능
+  const handleDeleteWordFromUnit = (wordToDelete: string) => {
+    if (!currentEditingUnit) return;
+
+    const remainingWords = wordInputText
+      .split(/[\n,]+/)
+      .map((w) => w.trim())
+      .filter((w) => w.length > 0 && w !== wordToDelete);
+
+    if (remainingWords.length === 0) {
+      alert('단원은 최소 1개 이상의 시험 단어를 포함해야 합니다.');
+      return;
+    }
+
+    const updatedText = remainingWords.join(', ');
+    setWordInputText(updatedText);
+
+    const updatedWordItems = currentEditingUnit.words.filter((w) => w.word !== wordToDelete);
+    onUpdateUnitWords(currentEditingUnit.id, updatedWordItems);
+
+    setTestStatus(`[${wordToDelete}] 단어가 단원 어휘 목록에서 즉시 삭제되었습니다.`);
+    setTimeout(() => setTestStatus(null), 2500);
+  };
+
+  // 새 어휘 즉시 추가
+  const handleQuickAddWord = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const wordToAdd = quickWordInput.trim();
+    if (!wordToAdd) return;
+    if (!currentEditingUnit) return;
+
+    const currentWordsList = wordInputText
+      .split(/[\n,]+/)
+      .map((w) => w.trim())
+      .filter((w) => w.length > 0);
+
+    if (currentWordsList.includes(wordToAdd)) {
+      alert(`[${wordToAdd}] 어휘는 이미 단원 목록에 존재합니다.`);
+      return;
+    }
+
+    const newWordItem = createWordItem(wordToAdd, `${wordToAdd} 어휘 학습`, '일반', undefined, {
+      partOfSpeech: '명사(N)',
+      englishMeaning: wordToAdd,
+      imageUrl: getWordDisplayImage(wordToAdd),
+    });
+
+    const updatedWords = [...currentEditingUnit.words, newWordItem];
+    const updatedText = currentWordsList.length > 0 ? `${wordInputText.trim()}, ${wordToAdd}` : wordToAdd;
+
+    setWordInputText(updatedText);
+    onUpdateUnitWords(currentEditingUnit.id, updatedWords);
+    setQuickWordInput('');
+    setTestStatus(`[${wordToAdd}] 단어가 단원에 새로 추가되었습니다.`);
+    setTimeout(() => setTestStatus(null), 2500);
+  };
+
+  // 새 시험 추가 폼에서 개별 단어 삭제
+  const handleDeleteWordFromNewExam = (wordToDelete: string) => {
+    const remaining = newExamWords
+      .split(/[\n,]+/)
+      .map((w) => w.trim())
+      .filter((w) => w.length > 0 && w !== wordToDelete);
+    setNewExamWords(remaining.join(', '));
+  };
+
   // 단원 어휘 및 설정 저장
   const handleSaveCurrentUnit = () => {
     if (!currentEditingUnit) return;
@@ -308,6 +387,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
         createWordItem(word, `${word} 어휘 학습`, '일반', undefined, {
           partOfSpeech: '명사(N)',
           englishMeaning: word,
+          imageUrl: getWordDisplayImage(word),
         })
       );
     });
@@ -346,6 +426,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
       createWordItem(word, `${word} 어휘 학습`, '학습어휘', undefined, {
         partOfSpeech: '명사(N)',
         englishMeaning: word,
+        imageUrl: getWordDisplayImage(word),
       })
     );
 
@@ -384,7 +465,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     setImageTabMode('preset');
   };
 
-  // 선택한 어휘 이미지 적용 및 영구 저장
+  // 선택한 어휘 이미지 적용 및 영구 저장 (단어 목록 상태 보존)
   const handleApplyImageChange = () => {
     if (!editingWord || !selectedImageUrl) return;
     saveCustomVocabImage(editingWord, selectedImageUrl);
@@ -392,9 +473,25 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
       onUpdateWordImage(editingWord, selectedImageUrl);
     }
     if (currentEditingUnit) {
-      const updatedWords = currentEditingUnit.words.map((w) =>
-        w.word === editingWord ? { ...w, imageUrl: selectedImageUrl } : w
-      );
+      const activeWordStrings = wordInputText
+        .split(/[\n,]+/)
+        .map((w) => w.trim())
+        .filter((w) => w.length > 0);
+
+      const updatedWords = activeWordStrings.map((word) => {
+        const existing = currentEditingUnit.words.find((w) => w.word === word);
+        const item =
+          existing ||
+          createWordItem(word, `${word} 어휘 학습`, '일반', undefined, {
+            partOfSpeech: '명사(N)',
+            englishMeaning: word,
+          });
+        if (word === editingWord) {
+          return { ...item, imageUrl: selectedImageUrl };
+        }
+        return item;
+      });
+
       onUpdateUnitWords(currentEditingUnit.id, updatedWords);
     }
     setTestStatus(`[${editingWord}] 어휘의 대표 이미지가 성공적으로 변경·저장되었습니다!`);
@@ -402,7 +499,43 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     setEditingWord(null);
   };
 
-  // 내 PC 파일 업로드 (Base64 인코딩으로 영구 로컬 저장 및 즉각 반영)
+  // 공식 기본 제공 이미지로 복구
+  const handleResetImageToDefault = () => {
+    if (!editingWord) return;
+    removeCustomVocabImage(editingWord);
+    const defaultUrl = getDefaultVocabImage(editingWord);
+    setSelectedImageUrl(defaultUrl);
+    if (onUpdateWordImage) {
+      onUpdateWordImage(editingWord, defaultUrl);
+    }
+    if (currentEditingUnit) {
+      const activeWordStrings = wordInputText
+        .split(/[\n,]+/)
+        .map((w) => w.trim())
+        .filter((w) => w.length > 0);
+
+      const updatedWords = activeWordStrings.map((word) => {
+        const existing = currentEditingUnit.words.find((w) => w.word === word);
+        const item =
+          existing ||
+          createWordItem(word, `${word} 어휘 학습`, '일반', undefined, {
+            partOfSpeech: '명사(N)',
+            englishMeaning: word,
+          });
+        if (word === editingWord) {
+          return { ...item, imageUrl: defaultUrl };
+        }
+        return item;
+      });
+
+      onUpdateUnitWords(currentEditingUnit.id, updatedWords);
+    }
+    setTestStatus(`[${editingWord}] 어휘 이미지가 공식 기본 이미지로 복구되었습니다.`);
+    setTimeout(() => setTestStatus(null), 3000);
+    setEditingWord(null);
+  };
+
+  // 내 PC 파일 업로드 (HTML Canvas 고효율 리사이징/압축: 최대 600px, JPEG 82% 압축으로 localStorage 용량 안전 보장)
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -411,10 +544,41 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setSelectedImageUrl(reader.result);
-      }
+    reader.onload = (event) => {
+      const rawDataUrl = event.target?.result;
+      if (typeof rawDataUrl !== 'string') return;
+
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxDim = 600;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxDim) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          }
+        } else {
+          if (height > maxDim) {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.82);
+          setSelectedImageUrl(compressedDataUrl);
+        } else {
+          setSelectedImageUrl(rawDataUrl);
+        }
+      };
+      img.src = rawDataUrl;
     };
     reader.readAsDataURL(file);
   };
@@ -858,12 +1022,16 @@ function setupClassSheets() {
 
           <button
             type="button"
-            onClick={onResetToPresets}
-            title="세종한국어 1~4단원 표준 템플릿으로 초기화"
-            className="text-[11px] font-semibold text-[#0284c7] hover:underline flex items-center gap-1 shrink-0 py-2 cursor-pointer"
+            onClick={() => {
+              onResetToPresets();
+              setTestStatus('세종한국어 공식 표준 단원과 최신 고화질 이미지가 성공적으로 동기화되었습니다!');
+              setTimeout(() => setTestStatus(null), 3000);
+            }}
+            title="세종한국어 공식 표준 단원 및 최신 고화질 이미지 동기화"
+            className="text-[11px] font-bold text-[#0284c7] hover:text-[#0369a1] bg-[#f0f9ff] hover:bg-[#e0f2fe] border border-[#bae6fd] px-3 py-1.5 rounded-lg flex items-center gap-1 shrink-0 cursor-pointer shadow-2xs transition-colors my-2"
           >
-            <span className="material-symbols-outlined text-[14px]">restart_alt</span>
-            <span>세종한국어 1~4단원 템플릿 복구</span>
+            <span className="material-symbols-outlined text-[15px]">sync</span>
+            <span>공식 단원 & 이미지 동기화</span>
           </button>
         </div>
 
@@ -1053,14 +1221,39 @@ function setupClassSheets() {
                     />
                   </div>
 
+                  {/* Quick Word Add Bar */}
+                  <div className="flex items-center gap-2 p-2.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl">
+                    <span className="material-symbols-outlined text-[20px] text-[#0284c7] pl-1">add_circle</span>
+                    <input
+                      type="text"
+                      value={quickWordInput}
+                      onChange={(e) => setQuickWordInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleQuickAddWord();
+                        }
+                      }}
+                      placeholder="추가할 새 어휘 직접 입력 (예: 컴퓨터) 후 Enter 또는 [단어 추가]"
+                      className="flex-1 bg-white border border-[#cbd5e1] px-3 py-1.5 rounded-lg text-xs outline-none focus:border-[#0284c7] text-[#0c2340]"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleQuickAddWord}
+                      className="px-3.5 py-1.5 bg-[#0c2340] hover:bg-[#163a66] text-white rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0 shadow-2xs"
+                    >
+                      단어 추가
+                    </button>
+                  </div>
+
                   {/* Words Breakdown Preview & Image Management */}
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-[#0c2340]">
-                        어휘 및 대표 이미지 매핑 (클릭하여 4종 추천 이미지 / PC 업로드로 변경)
+                        어휘 목록 및 대표 이미지 매핑 (카드별 [삭제] 및 [이미지 변경] 지원)
                       </span>
                       <span className="text-[11px] text-[#0284c7]">
-                        단어 카드의 [이미지 변경]을 눌러 원하는 시각 자료를 지정하세요.
+                        현재 출제 단어: {wordInputText.split(/[\n,]+/).filter((w) => w.trim()).length}개
                       </span>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-56 overflow-y-auto p-3 bg-[#f8fafc] rounded-xl border border-[#e2e8f0]">
@@ -1073,7 +1266,7 @@ function setupClassSheets() {
                           return (
                             <div
                               key={word}
-                              className="p-2.5 bg-white border border-[#e2e8f0] rounded-xl flex items-center gap-2.5 shadow-2xs hover:border-[#0c2340] transition-colors"
+                              className="group relative p-2.5 bg-white border border-[#e2e8f0] rounded-xl flex items-center gap-2.5 shadow-2xs hover:border-[#0c2340] transition-colors"
                             >
                               <img
                                 src={imgUrl}
@@ -1081,11 +1274,24 @@ function setupClassSheets() {
                                 className="w-11 h-11 rounded-lg object-cover bg-slate-100 border border-slate-200 shrink-0"
                               />
                               <div className="flex flex-col min-w-0 flex-1">
-                                <span className="font-bold text-xs text-[#0c2340] truncate">{word}</span>
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="font-bold text-xs text-[#0c2340] truncate" title={word}>
+                                    {word}
+                                  </span>
+                                  {/* 개별 단어 삭제 버튼 */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteWordFromUnit(word)}
+                                    title={`[${word}] 단어 삭제`}
+                                    className="w-5 h-5 rounded text-[#94a3b8] hover:text-red-600 hover:bg-red-50 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                                  >
+                                    <span className="material-symbols-outlined text-[15px]">close</span>
+                                  </button>
+                                </div>
                                 <button
                                   type="button"
                                   onClick={() => handleOpenImageEditor(word)}
-                                  className="mt-1 text-[10px] font-bold text-[#0284c7] hover:text-[#0369a1] flex items-center gap-0.5 cursor-pointer"
+                                  className="mt-1 text-[10px] font-bold text-[#0284c7] hover:text-[#0369a1] flex items-center gap-0.5 cursor-pointer self-start"
                                 >
                                   <span className="material-symbols-outlined text-[13px]">image</span>
                                   <span>이미지 변경</span>
@@ -1242,7 +1448,7 @@ function setupClassSheets() {
                         return (
                           <div
                             key={word}
-                            className="p-2.5 bg-white border border-[#e2e8f0] rounded-xl flex items-center gap-2.5 shadow-2xs hover:border-[#0c2340] transition-colors"
+                            className="group relative p-2.5 bg-white border border-[#e2e8f0] rounded-xl flex items-center gap-2.5 shadow-2xs hover:border-[#0c2340] transition-colors"
                           >
                             <img
                               src={imgUrl}
@@ -1250,11 +1456,23 @@ function setupClassSheets() {
                               className="w-10 h-10 rounded-lg object-cover bg-slate-100 border border-slate-200 shrink-0"
                             />
                             <div className="flex flex-col min-w-0 flex-1">
-                              <span className="font-bold text-xs text-[#0c2340] truncate">{word}</span>
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="font-bold text-xs text-[#0c2340] truncate" title={word}>
+                                  {word}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteWordFromNewExam(word)}
+                                  title={`[${word}] 단어 삭제`}
+                                  className="w-5 h-5 rounded text-[#94a3b8] hover:text-red-600 hover:bg-red-50 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                                >
+                                  <span className="material-symbols-outlined text-[14px]">close</span>
+                                </button>
+                              </div>
                               <button
                                 type="button"
                                 onClick={() => handleOpenImageEditor(word)}
-                                className="mt-0.5 text-[10px] font-bold text-[#0284c7] hover:text-[#0369a1] flex items-center gap-0.5 cursor-pointer"
+                                className="mt-0.5 text-[10px] font-bold text-[#0284c7] hover:text-[#0369a1] flex items-center gap-0.5 cursor-pointer self-start"
                               >
                                 <span className="material-symbols-outlined text-[12px]">image</span>
                                 <span>이미지 지정</span>
@@ -1905,22 +2123,34 @@ function setupClassSheets() {
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 bg-[#f8fafc] border-t border-[#e2e8f0] flex items-center justify-end gap-2">
+            <div className="p-4 bg-[#f8fafc] border-t border-[#e2e8f0] flex items-center justify-between gap-2">
               <button
                 type="button"
-                onClick={() => setEditingWord(null)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-[#64748b] hover:bg-[#e2e8f0] cursor-pointer"
+                onClick={handleResetImageToDefault}
+                title="교사 설정 이미지를 지우고 공식 기본 이미지로 복구"
+                className="px-3.5 py-2 rounded-xl text-xs font-bold text-red-600 hover:bg-red-50 border border-red-200 flex items-center gap-1 cursor-pointer transition-colors"
               >
-                취소
+                <span className="material-symbols-outlined text-[15px]">restart_alt</span>
+                <span>공식 기본 이미지로 복구</span>
               </button>
-              <button
-                type="button"
-                onClick={handleApplyImageChange}
-                className="px-5 py-2 rounded-xl bg-[#0c2340] hover:bg-[#163a66] text-white text-xs font-bold shadow-md transition-colors cursor-pointer flex items-center gap-1.5"
-              >
-                <span className="material-symbols-outlined text-[16px]">check</span>
-                <span>이 이미지로 확정 및 저장</span>
-              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingWord(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-[#64748b] hover:bg-[#e2e8f0] cursor-pointer"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApplyImageChange}
+                  className="px-5 py-2 rounded-xl bg-[#0c2340] hover:bg-[#163a66] text-white text-xs font-bold shadow-md transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <span className="material-symbols-outlined text-[16px]">check</span>
+                  <span>이 이미지로 확정 및 저장</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

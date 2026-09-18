@@ -8,7 +8,14 @@ import {
   WordItem,
   CourseCategory,
 } from './types';
-import { INITIAL_UNITS, SEJONG_PRESET_UNITS, JAMO_UNIT, saveCustomVocabImage } from './data/defaultUnits';
+import {
+  INITIAL_UNITS,
+  SEJONG_PRESET_UNITS,
+  DAEJIN_DATA_VERSION,
+  VOCAB_IMAGES,
+  getWordDisplayImage,
+  saveCustomVocabImage,
+} from './data/defaultUnits';
 import { Header } from './components/Header';
 import { LoginScreen } from './components/LoginScreen';
 import { UnitSelectScreen } from './components/UnitSelectScreen';
@@ -53,37 +60,65 @@ export default function App() {
     }
   });
 
-  // 단원 목록 (로컬스토리지 연동 및 대분류 카테고리 보정)
+  // 단원 목록 (로컬스토리지 연동, 데이터 버전 기반 공식 단원/이미지 자동 동기화)
   const [units, setUnits] = useState<ExamUnit[]>(() => {
     try {
+      const storedVersion = localStorage.getItem('daejin_data_version');
       const stored = localStorage.getItem('daejin_units');
+
+      // 저장된 데이터 버전이 최신 버전과 다르거나 최초 로드 시 공식 표준 단원/이미지 자동 동기화
+      if (storedVersion !== DAEJIN_DATA_VERSION) {
+        const customUnits: ExamUnit[] = [];
+        const statusMap = new Map<string, { status?: string; score?: number; completedAt?: string }>();
+
+        if (stored) {
+          try {
+            const parsed: ExamUnit[] = JSON.parse(stored);
+            parsed.forEach((u) => {
+              if (u.id.startsWith('custom-unit-')) {
+                customUnits.push(u);
+              } else {
+                statusMap.set(u.id, {
+                  status: u.status,
+                  score: u.score,
+                  completedAt: u.completedAt,
+                });
+              }
+            });
+          } catch {
+            // ignore
+          }
+        }
+
+        // 최신 SEJONG_PRESET_UNITS를 기반으로 학생 시험 점수/상태를 유지하며 단어 및 이미지 갱신
+        const updatedPresetUnits: ExamUnit[] = SEJONG_PRESET_UNITS.map((preset) => {
+          const prev = statusMap.get(preset.id);
+          const refreshedWords = preset.words.map((w) => ({
+            ...w,
+            imageUrl: VOCAB_IMAGES[w.word] || w.imageUrl || getWordDisplayImage(w.word),
+          }));
+
+          return {
+            ...preset,
+            words: refreshedWords,
+            wordsSummary:
+              refreshedWords.slice(0, 3).map((w) => w.word).join(', ') +
+              (refreshedWords.length > 3 ? ` 등 ${refreshedWords.length}개` : ''),
+            status: (prev?.status as any) || preset.status || 'available',
+            score: prev?.score !== undefined ? prev.score : preset.score,
+            completedAt: prev?.completedAt || preset.completedAt,
+          };
+        });
+
+        const mergedList = [...updatedPresetUnits, ...customUnits];
+        localStorage.setItem('daejin_units', JSON.stringify(mergedList));
+        localStorage.setItem('daejin_data_version', DAEJIN_DATA_VERSION);
+        return mergedList;
+      }
+
       if (stored) {
         const parsed: ExamUnit[] = JSON.parse(stored);
-        const hasJamo = parsed.some(
-          (u) => u.id === 'sejong-unit-jamo' || u.title.includes('자모')
-        );
-        let updatedList: ExamUnit[];
-        if (!hasJamo) {
-          updatedList = [JAMO_UNIT, ...parsed];
-        } else {
-          updatedList = parsed.map((u) => {
-            if (u.id === 'sejong-unit-jamo' || u.title.includes('자모')) {
-              return {
-                ...JAMO_UNIT,
-                category: '1A 한국어',
-                isPublished: true,
-                status: u.status || 'available',
-                score: u.score,
-                completedAt: u.completedAt,
-              };
-            }
-            return u;
-          });
-        }
-        return updatedList.map((u, i) => ({
-          ...u,
-          category: u.category || (i < 3 ? '1A 한국어' : '1B 한국어'),
-        }));
+        return parsed;
       }
       return INITIAL_UNITS;
     } catch {
@@ -91,7 +126,15 @@ export default function App() {
     }
   });
 
-  const [activeUnit, setActiveUnit] = useState<ExamUnit>(units[0] || INITIAL_UNITS[0]);
+  const [activeUnit, setActiveUnit] = useState<ExamUnit>(() => units[0] || INITIAL_UNITS[0]);
+
+  // units 상태가 갱신되면 activeUnit도 자동으로 최신 상태 동기화 (단어 삭제, 수정, 이미지 변경 즉시 반영)
+  useEffect(() => {
+    setActiveUnit((prev) => {
+      const found = units.find((u) => u.id === prev?.id);
+      return found || units[0] || INITIAL_UNITS[0];
+    });
+  }, [units]);
   const [currentResults, setCurrentResults] = useState<QuestionResult[]>([]);
   const [lastTimeSpent, setLastTimeSpent] = useState<number>(252);
   const [isTeacherModalOpen, setIsTeacherModalOpen] = useState<boolean>(false);
@@ -331,10 +374,32 @@ export default function App() {
     );
   };
 
-  // 세종한국어 1~4단원 표준 프리셋 복구
+  // 세종한국어 공식 표준 단원 및 최신 이미지 복구 동기화
   const handleResetToPresets = () => {
-    if (confirm('세종한국어 1~4단원 표준 템플릿으로 단원 목록을 초기화하시겠습니까?')) {
-      setUnits(SEJONG_PRESET_UNITS);
+    if (
+      confirm(
+        '세종한국어 공식 표준 단원(자모 기초 및 1~4단원 어휘와 고화질 이미지)으로 최신 동기화하시겠습니까?\n(선생님이 직접 등록하신 커스텀 시험은 안전하게 유지됩니다)'
+      )
+    ) {
+      const customUnits = units.filter((u) => u.id.startsWith('custom-unit-'));
+      const refreshedPresetUnits = SEJONG_PRESET_UNITS.map((preset) => {
+        const existing = units.find((u) => u.id === preset.id);
+        const refreshedWords = preset.words.map((w) => ({
+          ...w,
+          imageUrl: VOCAB_IMAGES[w.word] || w.imageUrl || getWordDisplayImage(w.word),
+        }));
+        return {
+          ...preset,
+          words: refreshedWords,
+          status: existing?.status || preset.status,
+          score: existing?.score,
+          completedAt: existing?.completedAt,
+        };
+      });
+      const merged = [...refreshedPresetUnits, ...customUnits];
+      setUnits(merged);
+      localStorage.setItem('daejin_units', JSON.stringify(merged));
+      localStorage.setItem('daejin_data_version', DAEJIN_DATA_VERSION);
     }
   };
 
