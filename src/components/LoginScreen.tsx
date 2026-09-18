@@ -692,13 +692,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       </main>
 
       {/* Bottom Footer - '대진대학교 한국학과' */}
-      <footer className="mt-6 text-center select-none">
+      <footer className="mt-6 text-center select-none flex flex-col items-center gap-1">
         <p className="text-xs font-bold text-[#0c2340] tracking-tight">
           대진대학교 한국학과
         </p>
-        <p className="text-[11px] text-[#64748b] mt-0.5">
+        <p className="text-[11px] text-[#64748b]">
           Department of Korean Language & Literature, Daejin University
         </p>
+        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 mt-1 rounded-full bg-[#f1f5f9] text-[#64748b] text-[10px] font-mono border border-[#e2e8f0]">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span>v2026.09.18 (Vercel 최신 배포)</span>
+        </div>
       </footer>
 
       {/* 비밀번호 찾기 / 재설정 모달 (Forgot Password Modal) */}

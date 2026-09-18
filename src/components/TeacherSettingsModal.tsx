@@ -7,6 +7,7 @@ import {
   createWordItem,
   getCandidateImagesForWord,
   getWordDisplayImage,
+  getCustomVocabImages,
   getDefaultVocabImage,
   removeCustomVocabImage,
   saveCustomVocabImage,
@@ -603,6 +604,49 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     img.src = newUrl;
   };
 
+  // 단원 데이터 내보내기 (클립보드 복사)
+  const handleExportUnits = () => {
+    try {
+      const exportData = {
+        version: 'v20260918',
+        exportedAt: new Date().toISOString(),
+        units,
+        customImages: getCustomVocabImages(),
+      };
+      const jsonStr = JSON.stringify(exportData, null, 2);
+      navigator.clipboard.writeText(jsonStr);
+      setTestStatus('현재 단원 및 이미지 설정이 클립보드에 복사되었습니다! 모바일 기기에서 [데이터 불러오기]를 눌러 붙여넣으세요.');
+      setTimeout(() => setTestStatus(null), 4000);
+    } catch {
+      alert('클립보드 복사에 실패했습니다.');
+    }
+  };
+
+  // 단원 데이터 불러오기 (다른 기기 데이터 동기화)
+  const handleImportUnits = () => {
+    const input = prompt('데스크탑에서 [데이터 내보내기]로 복사한 JSON 데이터를 여기에 붙여넣어 주세요:');
+    if (!input || !input.trim()) return;
+
+    try {
+      const data = JSON.parse(input.trim());
+      const importedUnits = data.units || data;
+      if (!Array.isArray(importedUnits) || importedUnits.length === 0) {
+        alert('올바른 단원 데이터 형식이 아닙니다.');
+        return;
+      }
+      if (data.customImages && typeof data.customImages === 'object') {
+        const currentCustom = getCustomVocabImages();
+        const merged = { ...currentCustom, ...data.customImages };
+        localStorage.setItem('daejin_custom_vocab_images', JSON.stringify(merged));
+      }
+      localStorage.setItem('daejin_units', JSON.stringify(importedUnits));
+      alert('단원 데이터가 성공적으로 불러와졌습니다! 화면을 새로고침합니다.');
+      window.location.reload();
+    } catch (e: any) {
+      alert('데이터 구문 분석 실패: ' + (e.message || String(e)));
+    }
+  };
+
   // 11개 컬럼 지원 및 [1A 한국어]~[2B 한국어] 분반별 시트 자동 라우팅 Apps Script 코드
   const appsScriptCode = `/**
  * 대진대학교 세종한국어 단어시험 성적 자동 수집 및 분반별 자동 라우팅 스크립트
@@ -1020,19 +1064,41 @@ function setupClassSheets() {
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              onResetToPresets();
-              setTestStatus('세종한국어 공식 표준 단원과 최신 고화질 이미지가 성공적으로 동기화되었습니다!');
-              setTimeout(() => setTestStatus(null), 3000);
-            }}
-            title="세종한국어 공식 표준 단원 및 최신 고화질 이미지 동기화"
-            className="text-[11px] font-bold text-[#0284c7] hover:text-[#0369a1] bg-[#f0f9ff] hover:bg-[#e0f2fe] border border-[#bae6fd] px-3 py-1.5 rounded-lg flex items-center gap-1 shrink-0 cursor-pointer shadow-2xs transition-colors my-2"
-          >
-            <span className="material-symbols-outlined text-[15px]">sync</span>
-            <span>공식 단원 & 이미지 동기화</span>
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0 my-2 flex-wrap sm:flex-nowrap">
+            <button
+              type="button"
+              onClick={handleExportUnits}
+              title="데스크탑에서 편집한 단원과 이미지를 모바일 등으로 전달하기 위해 클립보드에 복사"
+              className="text-[11px] font-bold text-[#475569] hover:text-[#0c2340] bg-white hover:bg-[#f1f5f9] border border-[#cbd5e1] px-2.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+            >
+              <span className="material-symbols-outlined text-[15px]">upload</span>
+              <span>데이터 내보내기</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleImportUnits}
+              title="데스크탑에서 복사한 단원 데이터를 붙여넣어 모바일 앱에 즉시 적용"
+              className="text-[11px] font-bold text-[#475569] hover:text-[#0c2340] bg-white hover:bg-[#f1f5f9] border border-[#cbd5e1] px-2.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+            >
+              <span className="material-symbols-outlined text-[15px]">download</span>
+              <span>데이터 불러오기</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                onResetToPresets();
+                setTestStatus('세종한국어 공식 표준 단원과 최신 고화질 이미지가 성공적으로 동기화되었습니다!');
+                setTimeout(() => setTestStatus(null), 3000);
+              }}
+              title="세종한국어 공식 표준 단원 및 최신 고화질 이미지 동기화"
+              className="text-[11px] font-bold text-[#0284c7] hover:text-[#0369a1] bg-[#f0f9ff] hover:bg-[#e0f2fe] border border-[#bae6fd] px-3 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer shadow-2xs transition-colors"
+            >
+              <span className="material-symbols-outlined text-[15px]">sync</span>
+              <span>공식 단원 & 이미지 동기화</span>
+            </button>
+          </div>
         </div>
 
         {/* Modal Scroll Content */}

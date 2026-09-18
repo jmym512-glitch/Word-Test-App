@@ -25,15 +25,19 @@ export const saveStoredSupabaseConfig = (url: string, key: string): void => {
   }
 };
 
+export const DEFAULT_SUPABASE_URL = 'https://afsmlwktxopnkenuqccq.supabase.co';
+export const DEFAULT_SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmc21sd2t0eG9wbmtlbnVxY2NxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkxNzI0MjksImV4cCI6MjEwNDc0ODQyOX0.NQisZeJvdUJrjSMMV6-50j-LJIaqyyrNIYBFMNqO8gM';
+
 export const getEffectiveSupabaseConfig = () => {
   const url =
     import.meta.env.VITE_SUPABASE_URL ||
     getStoredSupabaseUrl() ||
-    'https://afsmlwktxopnkenuqccq.supabase.co';
+    DEFAULT_SUPABASE_URL;
   const anonKey =
     import.meta.env.VITE_SUPABASE_ANON_KEY ||
     getStoredSupabaseAnonKey() ||
-    '';
+    DEFAULT_SUPABASE_ANON_KEY;
 
   const isConfigured = Boolean(
     url &&
