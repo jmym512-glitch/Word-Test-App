@@ -21,6 +21,13 @@ import {
   DbStudent,
 } from '../lib/supabase';
 import { DEFAULT_GOOGLE_SHEETS_WEBHOOK_URL, getEffectiveWebhookUrl } from '../config';
+import {
+  generateWordImageWithGemini,
+  getEffectiveGeminiApiKey,
+  saveStoredGeminiApiKey,
+  isGeminiConfigured,
+  buildEnhancedPrompt,
+} from '../lib/gemini';
 
 interface TeacherSettingsModalProps {
   isOpen: boolean;
@@ -153,6 +160,13 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
   const [aiPromptInput, setAiPromptInput] = useState<string>('');
   const [isGeneratingAi, setIsGeneratingAi] = useState<boolean>(false);
   const [imageTabMode, setImageTabMode] = useState<'preset' | 'upload' | 'url' | 'ai'>('preset');
+
+  // Google Gemini (Imagen 3) API Key 및 스타일 설정 상태
+  const [geminiApiKeyInput, setGeminiApiKeyInput] = useState<string>(() => getEffectiveGeminiApiKey());
+  const [isGeminiKeySaved, setIsGeminiKeySaved] = useState<boolean>(() => isGeminiConfigured());
+  const [geminiStyle, setGeminiStyle] = useState<'illustration' | 'photo' | 'cute'>('illustration');
+  const [geminiErrorMsg, setGeminiErrorMsg] = useState<string | null>(null);
+  const [isEditingGeminiKey, setIsEditingGeminiKey] = useState<boolean>(false);
 
   // 웹훅 테스트 분반 선택 및 전송 로딩 상태
   const [selectedTestClass, setSelectedTestClass] = useState<CourseCategory>('1A 한국어');
@@ -467,7 +481,8 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     const currentImg = getWordDisplayImage(word);
     setSelectedImageUrl(currentImg);
     setCustomUrlInput('');
-    setAiPromptInput(`${word}, korean vocabulary education, clean illustration, high quality, white background`);
+    setGeminiErrorMsg(null);
+    setAiPromptInput(buildEnhancedPrompt(word, geminiStyle));
     setImageTabMode('preset');
   };
 
@@ -589,68 +604,31 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     reader.readAsDataURL(file);
   };
 
-  // AI 어휘 이미지 생성
-  const handleGenerateAiImage = () => {
+  // Google Gemini (Imagen 3) 어휘 이미지 실시간 생성 (원클릭)
+  const handleGenerateAiImage = async () => {
     if (!editingWord) return;
     setIsGeneratingAi(true);
-    const prompt = aiPromptInput.trim() || `${editingWord} korean vocabulary clean clear illustration`;
-    const encoded = encodeURIComponent(prompt);
-    const newUrl = `https://image.pollinations.ai/prompt/${encoded}?width=600&height=400&nologo=true&seed=${Date.now()}`;
+    setGeminiErrorMsg(null);
 
-    const img = new Image();
-    img.onload = () => {
-      setSelectedImageUrl(newUrl);
-      setIsGeneratingAi(false);
-    };
-    img.onerror = () => {
-      setIsGeneratingAi(false);
-      alert('AI 이미지 서버의 일시적 요청 한도 초과(429)로 생성이 지연되고 있습니다. [추천 4종] 중 하나를 선택하시거나 [PC 업로드]를 이용하시면 오류 없이 즉시 반영됩니다.');
-    };
-    img.src = newUrl;
-  };
+    const promptToUse = aiPromptInput.trim() || buildEnhancedPrompt(editingWord, geminiStyle);
 
-  // 단원 데이터 내보내기 (클립보드 복사)
-  const handleExportUnits = () => {
     try {
-      const exportData = {
-        version: 'v20260918',
-        exportedAt: new Date().toISOString(),
-        units,
-        customImages: getCustomVocabImages(),
-      };
-      const jsonStr = JSON.stringify(exportData, null, 2);
-      navigator.clipboard.writeText(jsonStr);
-      setTestStatus('현재 단원 및 이미지 설정이 클립보드에 복사되었습니다! 모바일 기기에서 [데이터 불러오기]를 눌러 붙여넣으세요.');
-      setTimeout(() => setTestStatus(null), 4000);
-    } catch {
-      alert('클립보드 복사에 실패했습니다.');
+      const res = await generateWordImageWithGemini(editingWord, promptToUse, geminiApiKeyInput);
+      if (res.ok && res.imageUrl) {
+        setSelectedImageUrl(res.imageUrl);
+        setTestStatus(`[${editingWord}] 단어의 Gemini AI 이미지가 즉시 생성되었습니다! [확정 및 저장]을 누르면 바로 적용됩니다.`);
+        setTimeout(() => setTestStatus(null), 3500);
+      } else {
+        setGeminiErrorMsg(res.error || 'AI 이미지 생성에 실패했습니다.');
+      }
+    } catch (err: any) {
+      setGeminiErrorMsg(`생성 오류: ${err.message || String(err)}`);
+    } finally {
+      setIsGeneratingAi(false);
     }
   };
 
-  // 단원 데이터 불러오기 (다른 기기 데이터 동기화)
-  const handleImportUnits = () => {
-    const input = prompt('데스크탑에서 [데이터 내보내기]로 복사한 JSON 데이터를 여기에 붙여넣어 주세요:');
-    if (!input || !input.trim()) return;
 
-    try {
-      const data = JSON.parse(input.trim());
-      const importedUnits = data.units || data;
-      if (!Array.isArray(importedUnits) || importedUnits.length === 0) {
-        alert('올바른 단원 데이터 형식이 아닙니다.');
-        return;
-      }
-      if (data.customImages && typeof data.customImages === 'object') {
-        const currentCustom = getCustomVocabImages();
-        const merged = { ...currentCustom, ...data.customImages };
-        localStorage.setItem('daejin_custom_vocab_images', JSON.stringify(merged));
-      }
-      localStorage.setItem('daejin_units', JSON.stringify(importedUnits));
-      alert('단원 데이터가 성공적으로 불러와졌습니다! 화면을 새로고침합니다.');
-      window.location.reload();
-    } catch (e: any) {
-      alert('데이터 구문 분석 실패: ' + (e.message || String(e)));
-    }
-  };
 
   // 11개 컬럼 지원 및 [1A 한국어]~[2B 한국어] 분반별 시트 자동 라우팅 Apps Script 코드
   const appsScriptCode = `/**
@@ -972,9 +950,9 @@ function setupClassSheets() {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
-      <div className="relative w-full max-w-[1040px] bg-white rounded-3xl shadow-2xl border border-[#e2e8f0] my-6 overflow-hidden flex flex-col max-h-[92vh]">
+      <div className="relative w-full max-w-[1260px] bg-white rounded-3xl shadow-2xl border border-[#e2e8f0] my-4 sm:my-6 overflow-hidden flex flex-col max-h-[94vh]">
         {/* Modal Top Header */}
-        <div className="p-5 sm:p-6 border-b border-[#e2e8f0] bg-[#0c2340] text-white flex items-start justify-between">
+        <div className="p-5 sm:p-6 border-b border-[#e2e8f0] bg-[#0c2340] text-white flex items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-white self-start text-[12px] font-bold">
               <span className="material-symbols-outlined text-[16px] text-[#38bdf8]">admin_panel_settings</span>
@@ -988,48 +966,65 @@ function setupClassSheets() {
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[22px]">close</span>
-          </button>
+          <div className="flex items-center gap-2.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                onResetToPresets();
+                setTestStatus('세종한국어 공식 표준 단원과 최신 고화질 이미지가 복구되었습니다.');
+                setTimeout(() => setTestStatus(null), 3000);
+              }}
+              title="세종한국어 1~4단원 표준 템플릿 및 공식 이미지로 복구"
+              className="text-[12px] font-bold text-sky-200 hover:text-white bg-white/10 hover:bg-white/20 border border-white/20 px-3.5 py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[18px] text-[#38bdf8]">restart_alt</span>
+              <span className="hidden sm:inline">1~4단원 템플릿 복구</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors cursor-pointer shrink-0"
+              title="닫기"
+            >
+              <span className="material-symbols-outlined text-[22px]">close</span>
+            </button>
+          </div>
         </div>
 
-        {/* Tab Navigation - Primary Category Bar (넓고 쾌적한 대형 탭) */}
-        <div className="px-5 sm:px-6 py-3 bg-[#f8fafc] border-b border-[#e2e8f0] overflow-x-auto scrollbar-thin">
-          <div className="flex items-center gap-2 sm:gap-2.5 min-w-max">
+        {/* Tab Navigation - 스크롤 중첩 방지 및 탭 크기 대폭 확대 */}
+        <div className="px-5 sm:px-6 pt-3.5 pb-2 bg-[#f8fafc] border-b border-[#e2e8f0]">
+          <div className="flex items-center gap-3 overflow-x-auto pb-3 pt-1 [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-slate-100">
             <button
               type="button"
               onClick={() => setActiveTab('units')}
-              className={`px-5 py-3.5 rounded-2xl text-[14px] sm:text-[15px] font-extrabold flex items-center gap-2.5 transition-all whitespace-nowrap cursor-pointer shadow-sm ${
+              className={`px-5 py-3 sm:py-3.5 rounded-2xl text-[14px] sm:text-[15px] font-extrabold flex items-center gap-2.5 transition-all whitespace-nowrap cursor-pointer shadow-xs ${
                 activeTab === 'units'
-                  ? 'bg-[#0c2340] text-white shadow-md ring-2 ring-[#0c2340]/20 scale-[1.02]'
-                  : 'bg-white text-[#475569] hover:text-[#0c2340] hover:bg-[#f1f5f9] border border-[#e2e8f0]'
+                  ? 'bg-[#0c2340] text-white shadow-md ring-2 ring-[#0c2340]/25'
+                  : 'bg-white text-[#334155] hover:text-[#0c2340] hover:bg-slate-100 border border-[#cbd5e1]'
               }`}
             >
-              <span className="material-symbols-outlined text-[20px] sm:text-[22px]">format_list_bulleted</span>
-              <span>단원 목록 및 게시 관리</span>
+              <span className="material-symbols-outlined text-[20px]">format_list_bulleted</span>
+              <span>단원 목록 &amp; 게시 관리</span>
               <span
-                className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
-                  activeTab === 'units' ? 'bg-white/20 text-white' : 'bg-[#e2e8f0] text-[#475569]'
+                className={`px-2.5 py-0.5 rounded-full text-[11px] font-extrabold ${
+                  activeTab === 'units' ? 'bg-white/20 text-white' : 'bg-slate-100 text-[#0c2340]'
                 }`}
               >
-                {publishedCount}/{units.length}
+                {publishedCount}/{units.length} 게시
               </span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('add-unit')}
-              className={`px-5 py-3.5 rounded-2xl text-[14px] sm:text-[15px] font-extrabold flex items-center gap-2.5 transition-all whitespace-nowrap cursor-pointer shadow-sm ${
+              className={`px-5 py-3 sm:py-3.5 rounded-2xl text-[14px] sm:text-[15px] font-extrabold flex items-center gap-2.5 transition-all whitespace-nowrap cursor-pointer shadow-xs ${
                 activeTab === 'add-unit'
-                  ? 'bg-[#0c2340] text-white shadow-md ring-2 ring-[#0c2340]/20 scale-[1.02]'
-                  : 'bg-white text-[#475569] hover:text-[#0c2340] hover:bg-[#f1f5f9] border border-[#e2e8f0]'
+                  ? 'bg-[#0c2340] text-white shadow-md ring-2 ring-[#0c2340]/25'
+                  : 'bg-white text-[#334155] hover:text-[#0c2340] hover:bg-slate-100 border border-[#cbd5e1]'
               }`}
             >
-              <span className="material-symbols-outlined text-[20px] sm:text-[22px]">add_circle</span>
+              <span className="material-symbols-outlined text-[20px]">add_circle</span>
               <span>새 시험 등록</span>
               <span
                 className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
@@ -1043,30 +1038,30 @@ function setupClassSheets() {
             <button
               type="button"
               onClick={() => setActiveTab('webhook')}
-              className={`px-5 py-3.5 rounded-2xl text-[14px] sm:text-[15px] font-extrabold flex items-center gap-2.5 transition-all whitespace-nowrap cursor-pointer shadow-sm ${
+              className={`px-5 py-3 sm:py-3.5 rounded-2xl text-[14px] sm:text-[15px] font-extrabold flex items-center gap-2.5 transition-all whitespace-nowrap cursor-pointer shadow-xs ${
                 activeTab === 'webhook'
-                  ? 'bg-[#0c2340] text-white shadow-md ring-2 ring-[#0c2340]/20 scale-[1.02]'
-                  : 'bg-white text-[#475569] hover:text-[#0c2340] hover:bg-[#f1f5f9] border border-[#e2e8f0]'
+                  ? 'bg-[#0c2340] text-white shadow-md ring-2 ring-[#0c2340]/25'
+                  : 'bg-white text-[#334155] hover:text-[#0c2340] hover:bg-slate-100 border border-[#cbd5e1]'
               }`}
             >
-              <span className="material-symbols-outlined text-[20px] sm:text-[22px]">table_chart</span>
+              <span className="material-symbols-outlined text-[20px]">table_chart</span>
               <span>구글 스프레드시트 연동</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('logs')}
-              className={`px-5 py-3.5 rounded-2xl text-[14px] sm:text-[15px] font-extrabold flex items-center gap-2.5 transition-all whitespace-nowrap cursor-pointer shadow-sm ${
+              className={`px-5 py-3 sm:py-3.5 rounded-2xl text-[14px] sm:text-[15px] font-extrabold flex items-center gap-2.5 transition-all whitespace-nowrap cursor-pointer shadow-xs ${
                 activeTab === 'logs'
-                  ? 'bg-[#0c2340] text-white shadow-md ring-2 ring-[#0c2340]/20 scale-[1.02]'
-                  : 'bg-white text-[#475569] hover:text-[#0c2340] hover:bg-[#f1f5f9] border border-[#e2e8f0]'
+                  ? 'bg-[#0c2340] text-white shadow-md ring-2 ring-[#0c2340]/25'
+                  : 'bg-white text-[#334155] hover:text-[#0c2340] hover:bg-slate-100 border border-[#cbd5e1]'
               }`}
             >
-              <span className="material-symbols-outlined text-[20px] sm:text-[22px]">assignment</span>
+              <span className="material-symbols-outlined text-[20px]">assignment</span>
               <span>성적 제출 이력</span>
               <span
-                className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
-                  activeTab === 'logs' ? 'bg-white/20 text-white' : 'bg-[#e2e8f0] text-[#475569]'
+                className={`px-2.5 py-0.5 rounded-full text-[11px] font-extrabold ${
+                  activeTab === 'logs' ? 'bg-white/20 text-white' : 'bg-slate-100 text-[#0c2340]'
                 }`}
               >
                 {submissions.length}건
@@ -1079,31 +1074,31 @@ function setupClassSheets() {
                 setActiveTab('students');
                 fetchStudents();
               }}
-              className={`px-5 py-3.5 rounded-2xl text-[14px] sm:text-[15px] font-extrabold flex items-center gap-2.5 transition-all whitespace-nowrap cursor-pointer shadow-sm ${
+              className={`px-5 py-3 sm:py-3.5 rounded-2xl text-[14px] sm:text-[15px] font-extrabold flex items-center gap-2.5 transition-all whitespace-nowrap cursor-pointer shadow-xs ${
                 activeTab === 'students'
-                  ? 'bg-[#0c2340] text-white shadow-md ring-2 ring-[#0c2340]/20 scale-[1.02]'
-                  : 'bg-white text-[#475569] hover:text-[#0c2340] hover:bg-[#f1f5f9] border border-[#e2e8f0]'
+                  ? 'bg-[#0c2340] text-white shadow-md ring-2 ring-[#0c2340]/25'
+                  : 'bg-white text-[#334155] hover:text-[#0c2340] hover:bg-slate-100 border border-[#cbd5e1]'
               }`}
             >
-              <span className="material-symbols-outlined text-[20px] sm:text-[22px]">group</span>
-              <span>학생 계정 관리 & 비밀번호 초기화</span>
+              <span className="material-symbols-outlined text-[20px]">group</span>
+              <span>학생 계정 관리 &amp; 비밀번호 초기화</span>
             </button>
           </div>
         </div>
 
-        {/* Action & Cloud Sync Utility Bar (Row 2 - 데이터 및 클라우드 배포) */}
-        <div className="px-5 sm:px-6 py-2.5 bg-[#f0f9ff]/70 border-b border-[#bae6fd]/70 flex flex-wrap items-center justify-between gap-3">
+        {/* Action & Cloud Sync Utility Bar (Row 2 - 단일 핵심 배포 액션으로 정리) */}
+        <div className="px-5 sm:px-6 py-2.5 bg-[#f0f9ff]/80 border-b border-[#bae6fd]/80 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-[12px] font-bold text-[#0369a1]">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#e0f2fe] text-[#0284c7] text-[11px] font-extrabold border border-[#bae6fd]">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#e0f2fe] text-[#0284c7] text-[12px] font-extrabold border border-[#bae6fd]">
               <span className="w-2 h-2 rounded-full bg-[#16a34a] animate-pulse" />
-              Supabase 클라우드 실시간 동기화
+              Supabase 클라우드 실시간 중앙 동기화
             </span>
-            <span className="hidden md:inline text-[#64748b] text-[11px] font-medium">
-              PC에서 수정한 시험 및 이미지가 모든 학생 기기에 실시간 반영됩니다.
+            <span className="hidden md:inline text-[#475569] text-[12px] font-medium">
+              PC에서 수정한 시험 단원 및 대표 이미지가 모든 학생 기기(스마트폰, 태블릿, PC)에 자동 동기화됩니다.
             </span>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={async () => {
@@ -1121,71 +1116,13 @@ function setupClassSheets() {
                 }
               }}
               disabled={isSyncingCloud}
-              title="선생님 컴퓨터에서 수정한 단원/단어/이미지를 Supabase 클라우드에 배포하여 모든 학생 스마트폰/태블릿에 즉시 적용"
-              className="text-[12px] font-extrabold text-white bg-[#0c2340] hover:bg-[#1e3a5f] px-3.5 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95 disabled:opacity-50"
+              title="선생님 컴퓨터에서 수정한 단원/단어/이미지를 Supabase 클라우드에 즉시 배포하여 모든 학생 스마트폰/태블릿에 적용합니다"
+              className="text-[13px] font-extrabold text-white bg-[#0c2340] hover:bg-[#1e3a5f] px-4 py-2.5 rounded-xl flex items-center gap-2 cursor-pointer shadow-md transition-all active:scale-95 disabled:opacity-50"
             >
-              <span className={`material-symbols-outlined text-[17px] ${isSyncingCloud ? 'animate-spin' : ''}`}>
+              <span className={`material-symbols-outlined text-[19px] text-[#38bdf8] ${isSyncingCloud ? 'animate-spin' : ''}`}>
                 {isSyncingCloud ? 'sync' : 'cloud_upload'}
               </span>
-              <span>{isSyncingCloud ? '배포 중...' : '클라우드 즉시 배포 (학생 전체 반영)'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={async () => {
-                setIsSyncingCloud(true);
-                try {
-                  const ok = onManualCloudPull ? await onManualCloudPull() : true;
-                  if (ok) {
-                    setTestStatus('☁️ 클라우드에서 최신 단원 및 이미지 설정을 성공적으로 불러왔습니다!');
-                  } else {
-                    alert('클라우드 데이터를 불러오지 못했습니다.');
-                  }
-                } finally {
-                  setIsSyncingCloud(false);
-                  setTimeout(() => setTestStatus(null), 4000);
-                }
-              }}
-              disabled={isSyncingCloud}
-              title="Supabase 클라우드에서 최신 단원 설정을 가져옵니다"
-              className="text-[12px] font-bold text-[#0c2340] bg-white hover:bg-[#e0f2fe] border border-[#cbd5e1] px-3 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs disabled:opacity-50"
-            >
-              <span className="material-symbols-outlined text-[17px] text-[#0284c7]">cloud_download</span>
-              <span>클라우드 동기화</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                onResetToPresets();
-                setTestStatus('세종한국어 공식 표준 단원과 최신 고화질 이미지가 성공적으로 동기화되었습니다!');
-                setTimeout(() => setTestStatus(null), 3000);
-              }}
-              title="세종한국어 공식 표준 단원 및 최신 고화질 이미지 동기화"
-              className="text-[12px] font-bold text-[#15803d] bg-[#f0fdf4] hover:bg-[#dcfce7] border border-[#bbf7d0] px-3 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
-            >
-              <span className="material-symbols-outlined text-[17px]">sync</span>
-              <span>공식 단원 동기화</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleExportUnits}
-              title="현재 단원 설정을 JSON 텍스트로 클립보드에 복사"
-              className="text-[11px] font-semibold text-[#64748b] hover:text-[#0c2340] bg-white hover:bg-[#f1f5f9] border border-[#e2e8f0] px-2.5 py-2 rounded-xl flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
-            >
-              <span className="material-symbols-outlined text-[15px]">upload</span>
-              <span>JSON 내보내기</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleImportUnits}
-              title="JSON 단원 데이터를 직접 붙여넣어 복구"
-              className="text-[11px] font-semibold text-[#64748b] hover:text-[#0c2340] bg-white hover:bg-[#f1f5f9] border border-[#e2e8f0] px-2.5 py-2 rounded-xl flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
-            >
-              <span className="material-symbols-outlined text-[15px]">download</span>
-              <span>JSON 불러오기</span>
+              <span>{isSyncingCloud ? '클라우드 배포 중...' : '클라우드 즉시 배포 (학생 전체 반영)'}</span>
             </button>
           </div>
         </div>
@@ -2250,37 +2187,170 @@ function setupClassSheets() {
                 </div>
               )}
 
-              {/* Mode 4: AI 이미지 생성 */}
+              {/* Mode 4: Google Gemini (Imagen 3) AI 이미지 생성 */}
               {imageTabMode === 'ai' && (
-                <div className="flex flex-col gap-2 p-4 bg-[#f8fafc] rounded-2xl border border-[#e2e8f0]">
-                  <label className="text-xs font-bold text-[#0c2340] flex items-center justify-between">
-                    <span>AI 이미지 생성 프롬프트 (영문 입력 권장)</span>
-                    <span className="text-[10px] text-amber-600 font-semibold">
-                      *외부 AI 서비스 이용 한도 초과 시 추천 4종 또는 PC 업로드를 권장합니다.
-                    </span>
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={aiPromptInput}
-                      onChange={(e) => setAiPromptInput(e.target.value)}
-                      placeholder="예: fresh cucumber, food photography, white background"
-                      className="flex-1 px-3 py-2 bg-white border border-[#cbd5e1] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7]"
-                    />
+                <div className="flex flex-col gap-3 p-4 bg-[#f8fafc] rounded-2xl border border-[#e2e8f0]">
+                  {/* Google Gemini API 상태 & 키 설정 */}
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-3 bg-white rounded-xl border border-sky-100 shadow-2xs">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 text-white flex items-center justify-center font-extrabold text-xs shadow-xs">
+                        AI
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs font-extrabold text-[#0c2340] flex items-center gap-1.5">
+                          <span>Google Gemini (Imagen 3) 생성 엔진</span>
+                          {isGeminiKeySaved ? (
+                            <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-extrabold border border-emerald-200">
+                              연결됨
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-700 text-[10px] font-extrabold border border-amber-200">
+                              API Key 필요
+                            </span>
+                          )}
+                        </span>
+                        <span className="text-[11px] text-[#64748b]">
+                          {isGeminiKeySaved
+                            ? '구글 최신 Imagen 3 모델로 고품질 교육용 어휘 이미지를 즉시 생성합니다.'
+                            : 'Google AI Studio의 무료 API 키를 등록하시면 즉시 사용 가능합니다.'}
+                        </span>
+                      </div>
+                    </div>
+
                     <button
                       type="button"
-                      disabled={isGeneratingAi}
-                      onClick={handleGenerateAiImage}
-                      className="px-4 py-2 bg-[#0284c7] hover:bg-[#0369a1] text-white text-xs font-bold rounded-xl flex items-center gap-1 cursor-pointer shrink-0 disabled:opacity-50"
+                      onClick={() => setIsEditingGeminiKey(!isEditingGeminiKey)}
+                      className="text-[11px] font-bold text-[#0284c7] hover:underline cursor-pointer shrink-0"
                     >
-                      {isGeneratingAi ? (
-                        <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
-                      ) : (
-                        <span className="material-symbols-outlined text-[16px]">psychology</span>
-                      )}
-                      <span>{isGeneratingAi ? '생성 중...' : 'AI 생성'}</span>
+                      {isEditingGeminiKey ? '접기' : isGeminiKeySaved ? 'API Key 변경' : '키 등록하기'}
                     </button>
                   </div>
+
+                  {/* Gemini API Key 입력창 (펼침) */}
+                  {(!isGeminiKeySaved || isEditingGeminiKey) && (
+                    <div className="p-3 bg-sky-50/80 rounded-xl border border-sky-200 flex flex-col gap-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-[#0c2340]">Gemini API Key 입력</span>
+                        <a
+                          href="https://aistudio.google.com/app/apikey"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[11px] font-semibold text-[#0284c7] hover:underline flex items-center gap-0.5"
+                        >
+                          <span>구글 무료 API Key 발급받기</span>
+                          <span className="material-symbols-outlined text-[13px]">open_in_new</span>
+                        </a>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="password"
+                          value={geminiApiKeyInput}
+                          onChange={(e) => setGeminiApiKeyInput(e.target.value)}
+                          placeholder="AIzaSy..."
+                          className="flex-1 px-3 py-2 bg-white border border-[#cbd5e1] rounded-xl text-xs text-[#0c2340] font-mono outline-none focus:border-[#0284c7]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            saveStoredGeminiApiKey(geminiApiKeyInput);
+                            setIsGeminiKeySaved(isGeminiConfigured());
+                            setIsEditingGeminiKey(false);
+                            setTestStatus('Gemini API Key가 안전하게 저장되었습니다!');
+                            setTimeout(() => setTestStatus(null), 3000);
+                          }}
+                          className="px-4 py-2 bg-[#0c2340] hover:bg-[#163a66] text-white text-xs font-bold rounded-xl cursor-pointer shrink-0"
+                        >
+                          저장
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 스타일 프리셋 선택 버튼 */}
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-xs font-bold text-[#0c2340]">이미지 스타일 추천 (클릭 시 프롬프트 자동 세팅)</span>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setGeminiStyle('illustration');
+                          if (editingWord) setAiPromptInput(buildEnhancedPrompt(editingWord, 'illustration'));
+                        }}
+                        className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer border ${
+                          geminiStyle === 'illustration'
+                            ? 'bg-[#0c2340] text-white border-[#0c2340] shadow-xs'
+                            : 'bg-white text-[#475569] border-[#e2e8f0] hover:bg-slate-50'
+                        }`}
+                      >
+                        <span>🎨 교육용 일러스트</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setGeminiStyle('photo');
+                          if (editingWord) setAiPromptInput(buildEnhancedPrompt(editingWord, 'photo'));
+                        }}
+                        className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer border ${
+                          geminiStyle === 'photo'
+                            ? 'bg-[#0c2340] text-white border-[#0c2340] shadow-xs'
+                            : 'bg-white text-[#475569] border-[#e2e8f0] hover:bg-slate-50'
+                        }`}
+                      >
+                        <span>📸 선명한 실물 사진</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setGeminiStyle('cute');
+                          if (editingWord) setAiPromptInput(buildEnhancedPrompt(editingWord, 'cute'));
+                        }}
+                        className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer border ${
+                          geminiStyle === 'cute'
+                            ? 'bg-[#0c2340] text-white border-[#0c2340] shadow-xs'
+                            : 'bg-white text-[#475569] border-[#e2e8f0] hover:bg-slate-50'
+                        }`}
+                      >
+                        <span>🧸 귀여운 3D 캐릭터</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 영문 프롬프트 입력 및 생성 버튼 */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-bold text-[#0c2340]">생성 프롬프트 (자동 구성됨, 직접 편집 가능)</label>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="text"
+                        value={aiPromptInput}
+                        onChange={(e) => setAiPromptInput(e.target.value)}
+                        placeholder="예: Clean vector-style educational illustration..."
+                        className="flex-1 px-3 py-2.5 bg-white border border-[#cbd5e1] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7]"
+                      />
+                      <button
+                        type="button"
+                        disabled={isGeneratingAi}
+                        onClick={handleGenerateAiImage}
+                        className="px-5 py-2.5 bg-[#0284c7] hover:bg-[#0369a1] text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer shrink-0 shadow-sm disabled:opacity-50 transition-all"
+                      >
+                        {isGeneratingAi ? (
+                          <span className="material-symbols-outlined text-[17px] animate-spin">progress_activity</span>
+                        ) : (
+                          <span className="material-symbols-outlined text-[17px]">auto_awesome</span>
+                        )}
+                        <span>{isGeneratingAi ? 'Gemini로 생성 중...' : '원클릭 AI 이미지 생성'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 에러 메시지 안내 */}
+                  {geminiErrorMsg && (
+                    <div className="p-3 bg-red-50 text-red-700 border border-red-200 rounded-xl text-xs font-semibold flex items-center gap-2">
+                      <span className="material-symbols-outlined text-[18px]">error</span>
+                      <span className="flex-1">{geminiErrorMsg}</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
