@@ -15,6 +15,8 @@ import {
   VOCAB_IMAGES,
   getWordDisplayImage,
   saveCustomVocabImage,
+  getCustomVocabImages,
+  setAllCustomVocabImages,
 } from './data/defaultUnits';
 import { Header } from './components/Header';
 import { LoginScreen } from './components/LoginScreen';
@@ -24,8 +26,48 @@ import { TestResultScreen } from './components/TestResultScreen';
 import { TeacherSettingsModal } from './components/TeacherSettingsModal';
 import { VocabBookModal } from './components/VocabBookModal';
 import { StudyRecordsModal } from './components/StudyRecordsModal';
-import { supabase, isSupabaseConfigured } from './lib/supabase';
+import {
+  supabase,
+  isSupabaseConfigured,
+  fetchCloudUnits,
+  saveCloudUnits,
+  fetchCloudCustomImages,
+  saveCloudCustomImages,
+} from './lib/supabase';
 import { getEffectiveWebhookUrl } from './config';
+
+// 학생 기기 로컬 진행상태(점수, 완료 여부)와 클라우드 마스터 단원을 병합
+function mergeCloudUnitsWithLocalProgress(cloudUnits: ExamUnit[], localUnits: ExamUnit[]): ExamUnit[] {
+  const localMap = new Map<string, { status?: string; score?: number; completedAt?: string }>();
+  for (const lu of localUnits) {
+    if (lu.status === 'completed' || lu.score !== undefined) {
+      localMap.set(lu.id, { status: lu.status, score: lu.score, completedAt: lu.completedAt });
+    }
+  }
+
+  return cloudUnits.map((cu) => {
+    const local = localMap.get(cu.id);
+    if (local) {
+      return {
+        ...cu,
+        status: (local.status as any) || cu.status,
+        score: local.score !== undefined ? local.score : cu.score,
+        completedAt: local.completedAt || cu.completedAt,
+      };
+    }
+    return cu;
+  });
+}
+
+// 클라우드 업로드 전 개인 시험 점수 등을 정제한 마스터 단원 생성
+function sanitizeMasterUnitsForCloud(units: ExamUnit[]): ExamUnit[] {
+  return units.map((u) => ({
+    ...u,
+    status: 'available' as const,
+    score: undefined,
+    completedAt: undefined,
+  }));
+}
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<
@@ -198,19 +240,90 @@ export default function App() {
     }
   }, [submissions]);
 
+  // Supabase 클라우드(app_config)와 단원 및 커스텀 어휘 이미지 실시간 동기화
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncCloudData = async () => {
+      try {
+        const [cloudUnits, cloudImages] = await Promise.all([
+          fetchCloudUnits(),
+          fetchCloudCustomImages(),
+        ]);
+
+        if (!isMounted) return;
+
+        if (cloudImages && Object.keys(cloudImages).length > 0) {
+          setAllCustomVocabImages(cloudImages);
+        }
+
+        if (cloudUnits && Array.isArray(cloudUnits) && cloudUnits.length > 0) {
+          setUnits((current) => mergeCloudUnitsWithLocalProgress(cloudUnits, current));
+        } else {
+          // 클라우드가 비어 있는 경우(최초 1회): 현재 브라우저의 단원 및 이미지를 Supabase로 자동 초기 업로드
+          const localStored = localStorage.getItem('daejin_units');
+          if (localStored) {
+            try {
+              const parsed = JSON.parse(localStored);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                console.log('클라우드가 비어 있어 로컬 단원을 Supabase로 초기 자동 업로드합니다.');
+                saveCloudUnits(sanitizeMasterUnitsForCloud(parsed));
+                const customImgs = getCustomVocabImages();
+                if (Object.keys(customImgs).length > 0) {
+                  saveCloudCustomImages(customImgs);
+                }
+              }
+            } catch {}
+          }
+        }
+      } catch (err) {
+        console.warn('Initial cloud sync error:', err);
+      }
+    };
+
+    syncCloudData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   // Actions
-  const handleLogin = (profile: LearnerProfile) => {
+  const handleLogin = async (profile: LearnerProfile) => {
     setStudent(profile);
     try {
       localStorage.setItem('daejin_current_student', JSON.stringify(profile));
     } catch {}
+
+    // 학생 로그인 시 Supabase 클라우드 최신 단원/이미지 즉시 동기화
+    try {
+      const [cloudUnits, cloudImages] = await Promise.all([
+        fetchCloudUnits(),
+        fetchCloudCustomImages(),
+      ]);
+      if (cloudImages) {
+        setAllCustomVocabImages(cloudImages);
+      }
+      if (cloudUnits && Array.isArray(cloudUnits) && cloudUnits.length > 0) {
+        setUnits((current) => mergeCloudUnitsWithLocalProgress(cloudUnits, current));
+      }
+    } catch (e) {
+      console.warn('Login cloud sync error:', e);
+    }
+
     setCurrentTab('unit-select');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setStudent(null);
     try {
       localStorage.removeItem('daejin_current_student');
+    } catch {}
+    try {
+      const cloudUnits = await fetchCloudUnits();
+      if (cloudUnits && Array.isArray(cloudUnits) && cloudUnits.length > 0) {
+        setUnits(cloudUnits);
+      }
     } catch {}
     setCurrentTab('login');
   };
@@ -318,60 +431,70 @@ export default function App() {
     setCurrentTab('result');
   };
 
+  // 단원 변경 시 로컬 및 Supabase 클라우드 실시간 동시 저장
+  const updateAndSaveUnits = (newUnits: ExamUnit[]) => {
+    setUnits(newUnits);
+    try {
+      localStorage.setItem('daejin_units', JSON.stringify(newUnits));
+    } catch {}
+    saveCloudUnits(sanitizeMasterUnitsForCloud(newUnits));
+  };
+
   // 단원 어휘 업데이트
   const handleUpdateUnitWords = (unitId: string, newWords: WordItem[]) => {
-    setUnits((prev) =>
-      prev.map((u) => {
-        if (u.id === unitId) {
-          return {
-            ...u,
-            questionCount: newWords.length,
-            wordsSummary:
-              newWords.slice(0, 3).map((w) => w.word).join(', ') +
-              (newWords.length > 3 ? ` 등 ${newWords.length}개` : ''),
-            words: newWords,
-          };
-        }
-        return u;
-      })
-    );
+    const next = units.map((u) => {
+      if (u.id === unitId) {
+        return {
+          ...u,
+          questionCount: newWords.length,
+          wordsSummary:
+            newWords.slice(0, 3).map((w) => w.word).join(', ') +
+            (newWords.length > 3 ? ` 등 ${newWords.length}개` : ''),
+          words: newWords,
+        };
+      }
+      return u;
+    });
+    updateAndSaveUnits(next);
   };
 
   // 단원 게시(학생 노출) 토글
   const handleToggleUnitPublish = (unitId: string, isPublished: boolean) => {
-    setUnits((prev) =>
-      prev.map((u) => (u.id === unitId ? { ...u, isPublished } : u))
-    );
+    const next = units.map((u) => (u.id === unitId ? { ...u, isPublished } : u));
+    updateAndSaveUnits(next);
   };
 
   // 새 단원 추가
   const handleAddUnit = (newUnit: ExamUnit) => {
-    setUnits((prev) => [...prev, newUnit]);
+    const next = [...units, newUnit];
+    updateAndSaveUnits(next);
   };
 
   // 단원 삭제
   const handleDeleteUnit = (unitId: string) => {
-    setUnits((prev) => prev.filter((u) => u.id !== unitId));
+    const next = units.filter((u) => u.id !== unitId);
+    updateAndSaveUnits(next);
   };
 
   // 단원 세부정보(제목, 시간 등) 수정
   const handleUpdateUnitDetails = (unitId: string, details: Partial<ExamUnit>) => {
-    setUnits((prev) =>
-      prev.map((u) => (u.id === unitId ? { ...u, ...details } : u))
-    );
+    const next = units.map((u) => (u.id === unitId ? { ...u, ...details } : u));
+    updateAndSaveUnits(next);
   };
 
   // 어휘 이미지 AI 생성 및 커스텀 이미지 업데이트
   const handleUpdateWordImage = (word: string, newImageUrl: string) => {
     saveCustomVocabImage(word, newImageUrl);
-    setUnits((prev) =>
-      prev.map((unit) => ({
-        ...unit,
-        words: unit.words.map((w) =>
-          w.word === word ? { ...w, imageUrl: newImageUrl } : w
-        ),
-      }))
-    );
+    const next = units.map((unit) => ({
+      ...unit,
+      words: unit.words.map((w) =>
+        w.word === word ? { ...w, imageUrl: newImageUrl } : w
+      ),
+    }));
+    updateAndSaveUnits(next);
+    const allCustom = getCustomVocabImages();
+    allCustom[word] = newImageUrl;
+    saveCloudCustomImages(allCustom);
   };
 
   // 세종한국어 공식 표준 단원 및 최신 이미지 복구 동기화
@@ -397,9 +520,42 @@ export default function App() {
         };
       });
       const merged = [...refreshedPresetUnits, ...customUnits];
-      setUnits(merged);
-      localStorage.setItem('daejin_units', JSON.stringify(merged));
+      updateAndSaveUnits(merged);
       localStorage.setItem('daejin_data_version', DAEJIN_DATA_VERSION);
+    }
+  };
+
+  // 수동 클라우드 즉시 배포 (교사 PC -> Supabase)
+  const handleManualCloudPush = async (): Promise<boolean> => {
+    try {
+      const cleanUnits = sanitizeMasterUnitsForCloud(units);
+      const okUnits = await saveCloudUnits(cleanUnits);
+      const okImages = await saveCloudCustomImages(getCustomVocabImages());
+      return Boolean(okUnits && okImages);
+    } catch (e) {
+      console.error('Manual cloud push failed:', e);
+      return false;
+    }
+  };
+
+  // 수동 클라우드 최신 설정 내려받기 (Supabase -> 현재 기기)
+  const handleManualCloudPull = async (): Promise<boolean> => {
+    try {
+      const [cloudUnits, cloudImages] = await Promise.all([
+        fetchCloudUnits(),
+        fetchCloudCustomImages(),
+      ]);
+      if (cloudImages) {
+        setAllCustomVocabImages(cloudImages);
+      }
+      if (cloudUnits && Array.isArray(cloudUnits) && cloudUnits.length > 0) {
+        setUnits((current) => mergeCloudUnitsWithLocalProgress(cloudUnits, current));
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error('Manual cloud pull failed:', e);
+      return false;
     }
   };
 
@@ -466,6 +622,7 @@ export default function App() {
             units={units}
             onSelectUnit={handleSelectUnit}
             onLogout={handleLogout}
+            onRefreshUnits={handleManualCloudPull}
           />
         )}
 
@@ -529,6 +686,8 @@ export default function App() {
         submissions={submissions}
         onUpdateWordImage={handleUpdateWordImage}
         student={student}
+        onManualCloudPush={handleManualCloudPush}
+        onManualCloudPull={handleManualCloudPull}
       />
     </div>
   );

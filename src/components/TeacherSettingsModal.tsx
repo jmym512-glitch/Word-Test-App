@@ -37,6 +37,8 @@ interface TeacherSettingsModalProps {
   submissions: TestSubmission[];
   onUpdateWordImage?: (word: string, imageUrl: string) => void;
   student?: LearnerProfile | null;
+  onManualCloudPush?: () => Promise<boolean>;
+  onManualCloudPull?: () => Promise<boolean>;
 }
 
 export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
@@ -54,9 +56,12 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
   submissions,
   onUpdateWordImage,
   student,
+  onManualCloudPush,
+  onManualCloudPull,
 }) => {
   const [activeTab, setActiveTab] = useState<'units' | 'add-unit' | 'webhook' | 'logs' | 'students'>('units');
   const [selectedUnitId, setSelectedUnitId] = useState<string>(units[0]?.id || 'sejong-unit-1');
+  const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
 
   // 관리자 비밀번호 검증 상태 (비밀번호: 2525)
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(false);
@@ -1067,8 +1072,58 @@ function setupClassSheets() {
           <div className="flex items-center gap-1.5 shrink-0 my-2 flex-wrap sm:flex-nowrap">
             <button
               type="button"
+              onClick={async () => {
+                setIsSyncingCloud(true);
+                try {
+                  const ok = onManualCloudPush ? await onManualCloudPush() : true;
+                  if (ok) {
+                    setTestStatus('🚀 현재 단원 및 이미지 설정이 Supabase 클라우드에 성공적으로 배포되었습니다! 모든 학생 기기에서 즉시 확인됩니다.');
+                  } else {
+                    alert('클라우드 배포에 실패했습니다. 네트워크 연결을 확인해 주세요.');
+                  }
+                } finally {
+                  setIsSyncingCloud(false);
+                  setTimeout(() => setTestStatus(null), 4000);
+                }
+              }}
+              disabled={isSyncingCloud}
+              title="선생님 컴퓨터에서 수정한 단원/단어/이미지를 Supabase 클라우드에 배포하여 모든 학생 스마트폰/태블릿에 즉시 적용"
+              className="text-[11px] font-bold text-white bg-[#0c2340] hover:bg-[#1e3a5f] px-3 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer shadow-sm transition-all active:scale-95 disabled:opacity-50"
+            >
+              <span className={`material-symbols-outlined text-[15px] ${isSyncingCloud ? 'animate-spin' : ''}`}>
+                {isSyncingCloud ? 'sync' : 'cloud_upload'}
+              </span>
+              <span>{isSyncingCloud ? '클라우드 배포 중...' : '클라우드 즉시 배포 (학생 전체 반영)'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={async () => {
+                setIsSyncingCloud(true);
+                try {
+                  const ok = onManualCloudPull ? await onManualCloudPull() : true;
+                  if (ok) {
+                    setTestStatus('☁️ 클라우드에서 최신 단원 및 이미지 설정을 성공적으로 불러왔습니다!');
+                  } else {
+                    alert('클라우드 데이터를 불러오지 못했습니다.');
+                  }
+                } finally {
+                  setIsSyncingCloud(false);
+                  setTimeout(() => setTestStatus(null), 4000);
+                }
+              }}
+              disabled={isSyncingCloud}
+              title="Supabase 클라우드에서 최신 단원 설정을 가져옵니다"
+              className="text-[11px] font-bold text-[#0c2340] bg-[#e0f2fe] hover:bg-[#bae6fd] border border-[#7dd3fc] px-2.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
+            >
+              <span className="material-symbols-outlined text-[15px]">cloud_download</span>
+              <span>클라우드 동기화</span>
+            </button>
+
+            <button
+              type="button"
               onClick={handleExportUnits}
-              title="데스크탑에서 편집한 단원과 이미지를 모바일 등으로 전달하기 위해 클립보드에 복사"
+              title="현재 단원 설정을 JSON 텍스트로 클립보드에 복사"
               className="text-[11px] font-bold text-[#475569] hover:text-[#0c2340] bg-white hover:bg-[#f1f5f9] border border-[#cbd5e1] px-2.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
             >
               <span className="material-symbols-outlined text-[15px]">upload</span>
@@ -1078,7 +1133,7 @@ function setupClassSheets() {
             <button
               type="button"
               onClick={handleImportUnits}
-              title="데스크탑에서 복사한 단원 데이터를 붙여넣어 모바일 앱에 즉시 적용"
+              title="JSON 단원 데이터를 직접 붙여넣어 복구"
               className="text-[11px] font-bold text-[#475569] hover:text-[#0c2340] bg-white hover:bg-[#f1f5f9] border border-[#cbd5e1] px-2.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
             >
               <span className="material-symbols-outlined text-[15px]">download</span>
@@ -1115,13 +1170,21 @@ function setupClassSheets() {
           {activeTab === 'units' && (
             <div className="flex flex-col gap-5">
               {/* Guidance Box */}
-              <div className="p-3.5 bg-[#f0f9ff] rounded-xl border border-[#bae6fd] flex items-start gap-2.5">
-                <span className="material-symbols-outlined text-[20px] text-[#0284c7] shrink-0 mt-0.5">
-                  info
-                </span>
-                <p className="text-[12px] text-[#0369a1] leading-relaxed">
-                  <strong>안내:</strong> 아래 단원 목록에서 <strong>[학생에게 공개/게시]</strong>를 켠 단원만 학생의 단원 선택 화면에 노출됩니다. 교사가 등록 및 공개하지 않은 단원은 학생에게 보이지 않습니다.
-                </p>
+              <div className="p-4 bg-[#f0fdf4] rounded-2xl border border-[#bbf7d0] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-[#dcfce7] flex items-center justify-center text-[#16a34a] shrink-0 mt-0.5">
+                    <span className="material-symbols-outlined text-[20px]">cloud_done</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[13px] font-bold text-[#15803d] flex items-center gap-1.5">
+                      Supabase 클라우드 실시간 중앙 동기화 활성화됨
+                      <span className="px-2 py-0.5 bg-[#16a34a] text-white text-[10px] rounded-full font-extrabold">LIVE</span>
+                    </span>
+                    <p className="text-[12px] text-[#166534] leading-relaxed mt-0.5">
+                      선생님 컴퓨터에서 단어를 삭제하거나 새 단원 추가, 제한시간 변경, 이미지 교체를 하시면 <strong>즉시 Supabase 클라우드에 실시간 저장</strong>되며, 모든 학생 기기(스마트폰, 태블릿, PC)에 자동 동기화됩니다.
+                    </p>
+                  </div>
+                </div>
               </div>
 
               {/* Units Table / Card List */}

@@ -6,6 +6,7 @@ interface UnitSelectScreenProps {
   units: ExamUnit[];
   onSelectUnit: (unit: ExamUnit) => void;
   onLogout: () => void;
+  onRefreshUnits?: () => Promise<boolean>;
 }
 
 const CATEGORY_TABS: (CourseCategory | '전체')[] = [
@@ -21,7 +22,9 @@ export const UnitSelectScreen: React.FC<UnitSelectScreenProps> = ({
   units,
   onSelectUnit,
   onLogout,
+  onRefreshUnits,
 }) => {
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const publishedUnits = units.filter((u) => u.isPublished);
   const studentClass = (student.courseClass as CourseCategory) || '1A 한국어';
   const [selectedCategory, setSelectedCategory] = useState<CourseCategory | '전체'>(studentClass);
@@ -125,12 +128,36 @@ export const UnitSelectScreen: React.FC<UnitSelectScreenProps> = ({
 
         {/* Title & Guidance Header */}
         <div className="flex flex-col gap-1.5 px-1">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#0284c7]/10 text-[#0284c7] text-[11px] font-bold">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#0284c7] animate-pulse" />
-              대진대 세종한국어 단어 평가
-            </span>
-            <span className="text-[12px] text-[#64748b] font-medium">{currentDateFormatted}</span>
+          <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#0284c7]/10 text-[#0284c7] text-[11px] font-bold">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#0284c7] animate-pulse" />
+                대진대 세종한국어 단어 평가
+              </span>
+              <span className="text-[12px] text-[#64748b] font-medium">{currentDateFormatted}</span>
+            </div>
+
+            {onRefreshUnits && (
+              <button
+                type="button"
+                onClick={async () => {
+                  setIsRefreshing(true);
+                  try {
+                    await onRefreshUnits();
+                  } finally {
+                    setTimeout(() => setIsRefreshing(false), 500);
+                  }
+                }}
+                disabled={isRefreshing}
+                title="선생님이 새로 게시하거나 수정한 최신 시험 목록을 불러옵니다"
+                className="flex items-center gap-1 text-[11px] font-bold text-[#0284c7] hover:text-[#0369a1] bg-[#f0f9ff] hover:bg-[#e0f2fe] border border-[#bae6fd] px-2.5 py-1 rounded-lg transition-all cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
+              >
+                <span className={`material-symbols-outlined text-[14px] ${isRefreshing ? 'animate-spin' : ''}`}>
+                  sync
+                </span>
+                <span>{isRefreshing ? '동기화 중...' : '시험 목록 새로고침'}</span>
+              </button>
+            )}
           </div>
           <h1 className="text-[22px] sm:text-[24px] font-extrabold text-[#0c2340] tracking-tight">
             Please select the session to take.

@@ -114,6 +114,17 @@ export function saveCustomVocabImage(word: string, imageUrl: string): void {
   }
 }
 
+// 클라우드에서 동기화된 전체 커스텀 어휘 이미지를 로컬 스토리지에 병합 저장
+export function setAllCustomVocabImages(images: Record<string, string>): void {
+  try {
+    const current = getCustomVocabImages();
+    const merged = { ...current, ...images };
+    localStorage.setItem('daejin_custom_vocab_images', JSON.stringify(merged));
+  } catch (e) {
+    console.error('Failed to set all custom vocab images', e);
+  }
+}
+
 // 단어의 커스텀 이미지 설정을 해제하고 공식 기본 이미지로 복구
 export function removeCustomVocabImage(word: string): void {
   try {

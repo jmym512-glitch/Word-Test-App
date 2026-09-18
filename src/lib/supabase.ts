@@ -131,3 +131,93 @@ export interface DbStudent {
   nationality?: string;
   created_at?: string;
 }
+
+// ==========================================
+// 클라우드 단원 및 어휘/이미지 설정 동기화 (Supabase app_config)
+// ==========================================
+
+export const fetchCloudUnits = async (): Promise<any[] | null> => {
+  try {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('app_config')
+      .select('value')
+      .eq('key', 'units')
+      .maybeSingle();
+
+    if (error) {
+      console.warn('Failed to fetch units from cloud:', error);
+      return null;
+    }
+    if (data && Array.isArray(data.value)) {
+      return data.value;
+    }
+    return null;
+  } catch (err) {
+    console.warn('Exception while fetching cloud units:', err);
+    return null;
+  }
+};
+
+export const saveCloudUnits = async (units: any[]): Promise<boolean> => {
+  try {
+    const client = getSupabaseClient();
+    const { error } = await client.from('app_config').upsert({
+      key: 'units',
+      value: units,
+      updated_at: new Date().toISOString(),
+    });
+
+    if (error) {
+      console.error('Failed to save units to cloud:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('Exception while saving cloud units:', err);
+    return false;
+  }
+};
+
+export const fetchCloudCustomImages = async (): Promise<Record<string, string> | null> => {
+  try {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('app_config')
+      .select('value')
+      .eq('key', 'custom_vocab_images')
+      .maybeSingle();
+
+    if (error) {
+      console.warn('Failed to fetch custom images from cloud:', error);
+      return null;
+    }
+    if (data && data.value && typeof data.value === 'object') {
+      return data.value as Record<string, string>;
+    }
+    return null;
+  } catch (err) {
+    console.warn('Exception while fetching cloud custom images:', err);
+    return null;
+  }
+};
+
+export const saveCloudCustomImages = async (images: Record<string, string>): Promise<boolean> => {
+  try {
+    const client = getSupabaseClient();
+    const { error } = await client.from('app_config').upsert({
+      key: 'custom_vocab_images',
+      value: images,
+      updated_at: new Date().toISOString(),
+    });
+
+    if (error) {
+      console.error('Failed to save custom images to cloud:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('Exception while saving cloud custom images:', err);
+    return false;
+  }
+};
