@@ -972,18 +972,18 @@ function setupClassSheets() {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
-      <div className="relative w-full max-w-[920px] bg-white rounded-3xl shadow-2xl border border-[#e2e8f0] my-6 overflow-hidden flex flex-col max-h-[92vh]">
+      <div className="relative w-full max-w-[1040px] bg-white rounded-3xl shadow-2xl border border-[#e2e8f0] my-6 overflow-hidden flex flex-col max-h-[92vh]">
         {/* Modal Top Header */}
         <div className="p-5 sm:p-6 border-b border-[#e2e8f0] bg-[#0c2340] text-white flex items-start justify-between">
           <div className="flex flex-col gap-1">
-            <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-white/10 text-white self-start text-[11px] font-bold">
-              <span className="material-symbols-outlined text-[14px] text-[#38bdf8]">admin_panel_settings</span>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-white self-start text-[12px] font-bold">
+              <span className="material-symbols-outlined text-[16px] text-[#38bdf8]">admin_panel_settings</span>
               <span>대진대학교 세종한국어 강사 전용 콘솔</span>
             </div>
-            <h2 className="text-[20px] sm:text-[22px] font-extrabold tracking-tight mt-1">
+            <h2 className="text-[22px] sm:text-[24px] font-extrabold tracking-tight mt-1">
               시험 단원 등록 및 출제 관리 시스템
             </h2>
-            <p className="text-[12px] text-slate-300">
+            <p className="text-[13px] text-slate-300">
               교사가 등록/게시한 단원만 학생 단원 선택 화면에 노출됩니다. 1~4단원을 자유롭게 추가·수정·제어하세요.
             </p>
           </div>
@@ -991,65 +991,86 @@ function setupClassSheets() {
           <button
             type="button"
             onClick={onClose}
-            className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors cursor-pointer"
+            className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors cursor-pointer"
           >
-            <span className="material-symbols-outlined text-[20px]">close</span>
+            <span className="material-symbols-outlined text-[22px]">close</span>
           </button>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="px-6 bg-[#f8fafc] border-b border-[#e2e8f0] flex items-center justify-between overflow-x-auto">
-          <div className="flex items-center gap-2">
+        {/* Tab Navigation - Primary Category Bar (넓고 쾌적한 대형 탭) */}
+        <div className="px-5 sm:px-6 py-3 bg-[#f8fafc] border-b border-[#e2e8f0] overflow-x-auto scrollbar-thin">
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-max">
             <button
               type="button"
               onClick={() => setActiveTab('units')}
-              className={`px-4 py-3 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
+              className={`px-5 py-3.5 rounded-2xl text-[14px] sm:text-[15px] font-extrabold flex items-center gap-2.5 transition-all whitespace-nowrap cursor-pointer shadow-sm ${
                 activeTab === 'units'
-                  ? 'border-[#0c2340] text-[#0c2340]'
-                  : 'border-transparent text-[#64748b] hover:text-[#0c2340]'
+                  ? 'bg-[#0c2340] text-white shadow-md ring-2 ring-[#0c2340]/20 scale-[1.02]'
+                  : 'bg-white text-[#475569] hover:text-[#0c2340] hover:bg-[#f1f5f9] border border-[#e2e8f0]'
               }`}
             >
-              <span className="material-symbols-outlined text-[16px]">format_list_bulleted</span>
-              <span>단원 목록 및 게시 관리 ({publishedCount}/{units.length}개 게시됨)</span>
+              <span className="material-symbols-outlined text-[20px] sm:text-[22px]">format_list_bulleted</span>
+              <span>단원 목록 및 게시 관리</span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
+                  activeTab === 'units' ? 'bg-white/20 text-white' : 'bg-[#e2e8f0] text-[#475569]'
+                }`}
+              >
+                {publishedCount}/{units.length}
+              </span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('add-unit')}
-              className={`px-4 py-3 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
+              className={`px-5 py-3.5 rounded-2xl text-[14px] sm:text-[15px] font-extrabold flex items-center gap-2.5 transition-all whitespace-nowrap cursor-pointer shadow-sm ${
                 activeTab === 'add-unit'
-                  ? 'border-[#0c2340] text-[#0c2340]'
-                  : 'border-transparent text-[#64748b] hover:text-[#0c2340]'
+                  ? 'bg-[#0c2340] text-white shadow-md ring-2 ring-[#0c2340]/20 scale-[1.02]'
+                  : 'bg-white text-[#475569] hover:text-[#0c2340] hover:bg-[#f1f5f9] border border-[#e2e8f0]'
               }`}
             >
-              <span className="material-symbols-outlined text-[16px]">add_circle</span>
+              <span className="material-symbols-outlined text-[20px] sm:text-[22px]">add_circle</span>
               <span>새 시험 등록</span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
+                  activeTab === 'add-unit' ? 'bg-white/20 text-white' : 'bg-[#e0f2fe] text-[#0369a1]'
+                }`}
+              >
+                +추가
+              </span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('webhook')}
-              className={`px-4 py-3 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
+              className={`px-5 py-3.5 rounded-2xl text-[14px] sm:text-[15px] font-extrabold flex items-center gap-2.5 transition-all whitespace-nowrap cursor-pointer shadow-sm ${
                 activeTab === 'webhook'
-                  ? 'border-[#0c2340] text-[#0c2340]'
-                  : 'border-transparent text-[#64748b] hover:text-[#0c2340]'
+                  ? 'bg-[#0c2340] text-white shadow-md ring-2 ring-[#0c2340]/20 scale-[1.02]'
+                  : 'bg-white text-[#475569] hover:text-[#0c2340] hover:bg-[#f1f5f9] border border-[#e2e8f0]'
               }`}
             >
-              <span className="material-symbols-outlined text-[16px]">table_chart</span>
+              <span className="material-symbols-outlined text-[20px] sm:text-[22px]">table_chart</span>
               <span>구글 스프레드시트 연동</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('logs')}
-              className={`px-4 py-3 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
+              className={`px-5 py-3.5 rounded-2xl text-[14px] sm:text-[15px] font-extrabold flex items-center gap-2.5 transition-all whitespace-nowrap cursor-pointer shadow-sm ${
                 activeTab === 'logs'
-                  ? 'border-[#0c2340] text-[#0c2340]'
-                  : 'border-transparent text-[#64748b] hover:text-[#0c2340]'
+                  ? 'bg-[#0c2340] text-white shadow-md ring-2 ring-[#0c2340]/20 scale-[1.02]'
+                  : 'bg-white text-[#475569] hover:text-[#0c2340] hover:bg-[#f1f5f9] border border-[#e2e8f0]'
               }`}
             >
-              <span className="material-symbols-outlined text-[16px]">assignment</span>
-              <span>성적 제출 이력 ({submissions.length}건)</span>
+              <span className="material-symbols-outlined text-[20px] sm:text-[22px]">assignment</span>
+              <span>성적 제출 이력</span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
+                  activeTab === 'logs' ? 'bg-white/20 text-white' : 'bg-[#e2e8f0] text-[#475569]'
+                }`}
+              >
+                {submissions.length}건
+              </span>
             </button>
 
             <button
@@ -1058,18 +1079,31 @@ function setupClassSheets() {
                 setActiveTab('students');
                 fetchStudents();
               }}
-              className={`px-4 py-3 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
+              className={`px-5 py-3.5 rounded-2xl text-[14px] sm:text-[15px] font-extrabold flex items-center gap-2.5 transition-all whitespace-nowrap cursor-pointer shadow-sm ${
                 activeTab === 'students'
-                  ? 'border-[#0c2340] text-[#0c2340]'
-                  : 'border-transparent text-[#64748b] hover:text-[#0c2340]'
+                  ? 'bg-[#0c2340] text-white shadow-md ring-2 ring-[#0c2340]/20 scale-[1.02]'
+                  : 'bg-white text-[#475569] hover:text-[#0c2340] hover:bg-[#f1f5f9] border border-[#e2e8f0]'
               }`}
             >
-              <span className="material-symbols-outlined text-[16px]">group</span>
+              <span className="material-symbols-outlined text-[20px] sm:text-[22px]">group</span>
               <span>학생 계정 관리 & 비밀번호 초기화</span>
             </button>
           </div>
+        </div>
 
-          <div className="flex items-center gap-1.5 shrink-0 my-2 flex-wrap sm:flex-nowrap">
+        {/* Action & Cloud Sync Utility Bar (Row 2 - 데이터 및 클라우드 배포) */}
+        <div className="px-5 sm:px-6 py-2.5 bg-[#f0f9ff]/70 border-b border-[#bae6fd]/70 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-[12px] font-bold text-[#0369a1]">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#e0f2fe] text-[#0284c7] text-[11px] font-extrabold border border-[#bae6fd]">
+              <span className="w-2 h-2 rounded-full bg-[#16a34a] animate-pulse" />
+              Supabase 클라우드 실시간 동기화
+            </span>
+            <span className="hidden md:inline text-[#64748b] text-[11px] font-medium">
+              PC에서 수정한 시험 및 이미지가 모든 학생 기기에 실시간 반영됩니다.
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
             <button
               type="button"
               onClick={async () => {
@@ -1088,12 +1122,12 @@ function setupClassSheets() {
               }}
               disabled={isSyncingCloud}
               title="선생님 컴퓨터에서 수정한 단원/단어/이미지를 Supabase 클라우드에 배포하여 모든 학생 스마트폰/태블릿에 즉시 적용"
-              className="text-[11px] font-bold text-white bg-[#0c2340] hover:bg-[#1e3a5f] px-3 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer shadow-sm transition-all active:scale-95 disabled:opacity-50"
+              className="text-[12px] font-extrabold text-white bg-[#0c2340] hover:bg-[#1e3a5f] px-3.5 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95 disabled:opacity-50"
             >
-              <span className={`material-symbols-outlined text-[15px] ${isSyncingCloud ? 'animate-spin' : ''}`}>
+              <span className={`material-symbols-outlined text-[17px] ${isSyncingCloud ? 'animate-spin' : ''}`}>
                 {isSyncingCloud ? 'sync' : 'cloud_upload'}
               </span>
-              <span>{isSyncingCloud ? '클라우드 배포 중...' : '클라우드 즉시 배포 (학생 전체 반영)'}</span>
+              <span>{isSyncingCloud ? '배포 중...' : '클라우드 즉시 배포 (학생 전체 반영)'}</span>
             </button>
 
             <button
@@ -1114,30 +1148,10 @@ function setupClassSheets() {
               }}
               disabled={isSyncingCloud}
               title="Supabase 클라우드에서 최신 단원 설정을 가져옵니다"
-              className="text-[11px] font-bold text-[#0c2340] bg-[#e0f2fe] hover:bg-[#bae6fd] border border-[#7dd3fc] px-2.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
+              className="text-[12px] font-bold text-[#0c2340] bg-white hover:bg-[#e0f2fe] border border-[#cbd5e1] px-3 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs disabled:opacity-50"
             >
-              <span className="material-symbols-outlined text-[15px]">cloud_download</span>
+              <span className="material-symbols-outlined text-[17px] text-[#0284c7]">cloud_download</span>
               <span>클라우드 동기화</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleExportUnits}
-              title="현재 단원 설정을 JSON 텍스트로 클립보드에 복사"
-              className="text-[11px] font-bold text-[#475569] hover:text-[#0c2340] bg-white hover:bg-[#f1f5f9] border border-[#cbd5e1] px-2.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
-            >
-              <span className="material-symbols-outlined text-[15px]">upload</span>
-              <span>데이터 내보내기</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleImportUnits}
-              title="JSON 단원 데이터를 직접 붙여넣어 복구"
-              className="text-[11px] font-bold text-[#475569] hover:text-[#0c2340] bg-white hover:bg-[#f1f5f9] border border-[#cbd5e1] px-2.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
-            >
-              <span className="material-symbols-outlined text-[15px]">download</span>
-              <span>데이터 불러오기</span>
             </button>
 
             <button
@@ -1148,10 +1162,30 @@ function setupClassSheets() {
                 setTimeout(() => setTestStatus(null), 3000);
               }}
               title="세종한국어 공식 표준 단원 및 최신 고화질 이미지 동기화"
-              className="text-[11px] font-bold text-[#0284c7] hover:text-[#0369a1] bg-[#f0f9ff] hover:bg-[#e0f2fe] border border-[#bae6fd] px-3 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer shadow-2xs transition-colors"
+              className="text-[12px] font-bold text-[#15803d] bg-[#f0fdf4] hover:bg-[#dcfce7] border border-[#bbf7d0] px-3 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
             >
-              <span className="material-symbols-outlined text-[15px]">sync</span>
-              <span>공식 단원 & 이미지 동기화</span>
+              <span className="material-symbols-outlined text-[17px]">sync</span>
+              <span>공식 단원 동기화</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleExportUnits}
+              title="현재 단원 설정을 JSON 텍스트로 클립보드에 복사"
+              className="text-[11px] font-semibold text-[#64748b] hover:text-[#0c2340] bg-white hover:bg-[#f1f5f9] border border-[#e2e8f0] px-2.5 py-2 rounded-xl flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+            >
+              <span className="material-symbols-outlined text-[15px]">upload</span>
+              <span>JSON 내보내기</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleImportUnits}
+              title="JSON 단원 데이터를 직접 붙여넣어 복구"
+              className="text-[11px] font-semibold text-[#64748b] hover:text-[#0c2340] bg-white hover:bg-[#f1f5f9] border border-[#e2e8f0] px-2.5 py-2 rounded-xl flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+            >
+              <span className="material-symbols-outlined text-[15px]">download</span>
+              <span>JSON 불러오기</span>
             </button>
           </div>
         </div>
