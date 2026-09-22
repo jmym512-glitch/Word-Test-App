@@ -27,6 +27,7 @@ export const getEffectiveGeminiApiKey = (): string => {
   return (
     getStoredGeminiApiKey() ||
     import.meta.env.VITE_GEMINI_API_KEY ||
+    (import.meta.env as any).GEMINI_API_KEY ||
     ''
   ).trim();
 };
