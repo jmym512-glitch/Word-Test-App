@@ -67,8 +67,8 @@ export function buildFluxPrompt(word: string, style: 'illustration' | 'photo' | 
 
 /**
  * Cloudflare Workers AI를 호출하여 Base64 이미지 데이터 URL을 생성합니다.
- * 기본 모델: @cf/black-forest-labs/flux-1-schnell
- * 대체 모델: @cf/bytedance/stable-diffusion-xl-lightning
+ * 1순위: Vercel Serverless Function 백엔드 (/api/generate-image) - 브라우저 CORS 완벽 우회
+ * 2순위: 클라이언트 직접 호출
  */
 export async function generateWordImageWithCloudflare(
   word: string,
@@ -80,16 +80,40 @@ export async function generateWordImageWithCloudflare(
   const accountId = (accountIdOverride || getStoredCloudflareAccountId()).trim();
   const token = (tokenOverride || getStoredCloudflareApiToken()).trim();
 
-  if (!accountId || !token) {
-    return {
-      ok: false,
-      error: 'Cloudflare 계정 ID 또는 API 토큰이 설정되지 않았습니다. 토큰을 입력해 주세요.',
-    };
-  }
-
   const promptToUse = (customPrompt || '').trim() || buildFluxPrompt(word, style);
 
-  // 1차 시도: FLUX.1 [schnell] (최신 최고 품질 모델)
+  // 1순위: Vercel Serverless Function 백엔드 (/api/generate-image)
+  // 브라우저의 CORS 제한(Failed to fetch)을 100% 완벽하게 우회하여 서버 대 서버로 Cloudflare를 호출합니다.
+  try {
+    const apiRes = await fetch('/api/generate-image', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        prompt: promptToUse,
+        accountId,
+        token,
+        model: '@cf/black-forest-labs/flux-1-schnell',
+      }),
+    });
+
+    if (apiRes.ok) {
+      const data = await apiRes.json();
+      if (data.ok && data.imageUrl) {
+        return { ok: true, imageUrl: data.imageUrl };
+      }
+    } else {
+      const errData = await apiRes.json().catch(() => ({}));
+      if (errData?.error) {
+        console.warn('Backend proxy error:', errData.error);
+      }
+    }
+  } catch (err) {
+    console.warn('Backend proxy network error, trying direct call fallback:', err);
+  }
+
+  // 2순위: 클라이언트 직접 호출 (로컬 개발 환경 등)
   try {
     const res = await callCloudflareModel(accountId, token, '@cf/black-forest-labs/flux-1-schnell', promptToUse);
     if (res.ok && res.imageUrl) return res;
@@ -97,7 +121,6 @@ export async function generateWordImageWithCloudflare(
     console.warn('FLUX-1-schnell call failed, trying SDXL-Lightning fallback:', err);
   }
 
-  // 2차 시도: SDXL-Lightning (고속 대체 모델)
   try {
     const res = await callCloudflareModel(accountId, token, '@cf/bytedance/stable-diffusion-xl-lightning', promptToUse);
     if (res.ok && res.imageUrl) return res;
