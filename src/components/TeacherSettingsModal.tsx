@@ -2325,7 +2325,7 @@ function setupClassSheets() {
                       </div>
                       <div className="flex flex-col">
                         <span className="text-xs font-extrabold text-[#0c2340] flex items-center gap-1.5">
-                          <span>Google Gemini (Imagen 3) 생성 엔진</span>
+                          <span>Google Gemini AI 이미지 생성 엔진</span>
                           {isGeminiKeySaved ? (
                             <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-extrabold border border-emerald-200">
                               연결됨
@@ -2338,7 +2338,7 @@ function setupClassSheets() {
                         </span>
                         <span className="text-[11px] text-[#64748b]">
                           {isGeminiKeySaved
-                            ? '구글 최신 Imagen 3 모델로 고품질 교육용 어휘 이미지를 즉시 생성합니다.'
+                            ? '구글 최신 Gemini AI 이미지 모델로 고품질 교육용 어휘 이미지를 즉시 생성합니다.'
                             : 'Google AI Studio의 무료 API 키를 등록하시면 즉시 사용 가능합니다.'}
                         </span>
                       </div>
