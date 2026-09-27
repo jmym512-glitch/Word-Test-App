@@ -2338,8 +2338,8 @@ function setupClassSheets() {
                         </span>
                         <span className="text-[11px] text-[#64748b]">
                           {isGeminiKeySaved
-                            ? '구글 최신 Gemini AI 이미지 모델로 고품질 교육용 어휘 이미지를 즉시 생성합니다.'
-                            : 'Google AI Studio의 무료 API 키를 등록하시면 즉시 사용 가능합니다.'}
+                            ? '구글 최신 Gemini AI 이미지 모델(gemini-3.1-flash-image)로 교육용 이미지를 생성합니다.'
+                            : 'Google AI Studio에서 발급받은 API 키를 등록하여 사용합니다.'}
                         </span>
                       </div>
                     </div>
@@ -2351,6 +2351,16 @@ function setupClassSheets() {
                     >
                       {isEditingGeminiKey ? '접기' : isGeminiKeySaved ? 'API Key 변경' : '키 등록하기'}
                     </button>
+                  </div>
+
+                  {/* 구글 이미지 모델 정책 및 무료 대안 팁 */}
+                  <div className="p-2.5 bg-amber-50/90 border border-amber-200 rounded-xl text-[11px] text-amber-900 flex items-start gap-2">
+                    <span className="material-symbols-outlined text-[16px] text-amber-600 shrink-0 mt-0.5">info</span>
+                    <div className="flex-1 leading-relaxed">
+                      <strong>구글 정책 안내:</strong> 구글 정책상 Gemini 이미지 생성 모델은 Google AI Studio에 <strong>결제 수단(종량제/Billing)</strong>이 등록된 계정에서만 동작합니다(무료 티어는 쿼터 0).
+                      <br />
+                      💡 <strong>무료 등록 추천:</strong> 별도 결제 없이 무료로 이미지를 등록하시려면 상단 탭의 <strong>[내 PC 업로드]</strong> 또는 <strong>[웹 이미지 URL 입력]</strong>(구글/네이버 이미지 복사-붙여넣기)을 이용하시면 1초 만에 즉시 등록됩니다!
+                    </div>
                   </div>
 
                   {/* Gemini API Key 입력창 (펼침) */}
@@ -2473,9 +2483,16 @@ function setupClassSheets() {
 
                   {/* 에러 메시지 안내 */}
                   {geminiErrorMsg && (
-                    <div className="p-3 bg-red-50 text-red-700 border border-red-200 rounded-xl text-xs font-semibold flex items-center gap-2">
-                      <span className="material-symbols-outlined text-[18px]">error</span>
-                      <span className="flex-1">{geminiErrorMsg}</span>
+                    <div className="p-3 bg-red-50 text-red-800 border border-red-200 rounded-xl text-xs font-medium flex flex-col gap-1.5 leading-relaxed">
+                      <div className="flex items-center gap-2 font-bold text-red-700">
+                        <span className="material-symbols-outlined text-[18px]">error</span>
+                        <span>AI 이미지 생성 안내</span>
+                      </div>
+                      <p>{geminiErrorMsg}</p>
+                      <div className="mt-1 pt-2 border-t border-red-200 text-[11px] text-red-600 flex items-center gap-1">
+                        <span className="material-symbols-outlined text-[14px]">lightbulb</span>
+                        <span>추천 대안: 상단 탭에서 <strong>[내 PC 업로드]</strong> 또는 <strong>[웹 이미지 URL 입력]</strong>을 이용하시면 별도 과금 없이 즉시 이미지를 등록하실 수 있습니다.</span>
+                      </div>
                     </div>
                   )}
                 </div>
