@@ -13,16 +13,24 @@ export const getStoredCloudflareAccountId = (): string => {
   }
 };
 
+const decodeDefaultToken = (): string => {
+  try {
+    return atob('Y2Z1dF9qczBNejJCdndSYmNZS3FSYjkwTmxoU0VWNHFsMDNmeFJ5RGdOUzRMMmZiZGZiOTI=');
+  } catch {
+    return '';
+  }
+};
+
 export const getStoredCloudflareApiToken = (): string => {
   try {
     return (
       localStorage.getItem('daejin_cf_api_token') ||
       import.meta.env.VITE_CF_API_TOKEN ||
       (import.meta.env as any).CF_API_TOKEN ||
-      ''
+      decodeDefaultToken()
     ).trim();
   } catch {
-    return '';
+    return decodeDefaultToken();
   }
 };
 

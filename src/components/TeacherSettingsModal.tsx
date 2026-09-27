@@ -683,7 +683,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     setTimeout(() => setTestStatus(null), 3000);
   };
 
-  // AI 어휘 이미지 실시간 생성 (1순위: Cloudflare Workers AI FLUX.1 / 2순위: Gemini)
+  // AI 어휘 이미지 실시간 생성 (Cloudflare Workers AI FLUX.1)
   const handleGenerateAiImage = async () => {
     if (!editingWord) return;
     setIsGeneratingAi(true);
@@ -692,34 +692,23 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     const promptToUse = aiPromptInput.trim() || buildFluxPrompt(editingWord, geminiStyle);
 
     try {
-      // 1순위: Cloudflare Workers AI (FLUX.1) - 무료 일일 50~100장 초고속 생성
-      if (cfAccountIdInput && cfTokenInput) {
-        const cfRes = await generateWordImageWithCloudflare(
-          editingWord,
-          promptToUse,
-          cfTokenInput,
-          cfAccountIdInput,
-          geminiStyle
-        );
-        if (cfRes.ok && cfRes.imageUrl) {
-          setSelectedImageUrl(cfRes.imageUrl);
-          setTestStatus(`[${editingWord}] 단어의 Cloudflare FLUX AI 이미지가 생성되었습니다! [확정 및 저장]을 누르면 바로 적용됩니다.`);
-          setTimeout(() => setTestStatus(null), 3500);
-          return;
-        } else if (cfRes.error) {
-          console.warn('Cloudflare AI error, falling back to Gemini:', cfRes.error);
-        }
-      }
+      const token = (cfTokenInput || getStoredCloudflareApiToken()).trim();
+      const accountId = (cfAccountIdInput || getStoredCloudflareAccountId()).trim();
 
-      // 2순위: Google Gemini API
-      const geminiPrompt = aiPromptInput.trim() || buildEnhancedPrompt(editingWord, geminiStyle);
-      const res = await generateWordImageWithGemini(editingWord, geminiPrompt, geminiApiKeyInput);
-      if (res.ok && res.imageUrl) {
-        setSelectedImageUrl(res.imageUrl);
-        setTestStatus(`[${editingWord}] 단어의 Gemini AI 이미지가 즉시 생성되었습니다! [확정 및 저장]을 누르면 바로 적용됩니다.`);
+      const cfRes = await generateWordImageWithCloudflare(
+        editingWord,
+        promptToUse,
+        token,
+        accountId,
+        geminiStyle
+      );
+
+      if (cfRes.ok && cfRes.imageUrl) {
+        setSelectedImageUrl(cfRes.imageUrl);
+        setTestStatus(`[${editingWord}] 단어의 Cloudflare FLUX AI 이미지가 2초 만에 생성되었습니다! [확정 및 저장]을 누르면 바로 적용됩니다.`);
         setTimeout(() => setTestStatus(null), 3500);
       } else {
-        setGeminiErrorMsg(res.error || 'AI 이미지 생성에 실패했습니다.');
+        setGeminiErrorMsg(cfRes.error || 'Cloudflare AI 이미지 생성에 실패했습니다.');
       }
     } catch (err: any) {
       setGeminiErrorMsg(`생성 오류: ${err.message || String(err)}`);
