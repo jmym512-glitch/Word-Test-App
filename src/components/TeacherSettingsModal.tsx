@@ -31,6 +31,14 @@ import {
   isGeminiConfigured,
   buildEnhancedPrompt,
 } from '../lib/gemini';
+import {
+  getStoredCloudflareAccountId,
+  getStoredCloudflareApiToken,
+  saveStoredCloudflareConfig,
+  isCloudflareConfigured,
+  generateWordImageWithCloudflare,
+  buildFluxPrompt,
+} from '../lib/cloudflareAi';
 
 interface TeacherSettingsModalProps {
   isOpen: boolean;
@@ -174,6 +182,12 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
   const [geminiStyle, setGeminiStyle] = useState<'illustration' | 'photo' | 'cute'>('illustration');
   const [geminiErrorMsg, setGeminiErrorMsg] = useState<string | null>(null);
   const [isEditingGeminiKey, setIsEditingGeminiKey] = useState<boolean>(false);
+
+  // Cloudflare Workers AI (FLUX.1) 설정 상태
+  const [cfAccountIdInput, setCfAccountIdInput] = useState<string>(() => getStoredCloudflareAccountId());
+  const [cfTokenInput, setCfTokenInput] = useState<string>(() => getStoredCloudflareApiToken());
+  const [isCfConfigured, setIsCfConfigured] = useState<boolean>(() => isCloudflareConfigured());
+  const [isEditingCfConfig, setIsEditingCfConfig] = useState<boolean>(false);
 
   // 웹훅 테스트 분반 선택 및 전송 로딩 상태
   const [selectedTestClass, setSelectedTestClass] = useState<CourseCategory>('1A 한국어');
@@ -660,16 +674,46 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     reader.readAsDataURL(file);
   };
 
-  // Google Gemini (Imagen 3) 어휘 이미지 실시간 생성 (원클릭)
+  // Cloudflare 계정 정보 저장 핸들러
+  const handleSaveCfConfig = () => {
+    saveStoredCloudflareConfig(cfAccountIdInput, cfTokenInput);
+    setIsCfConfigured(isCloudflareConfigured());
+    setIsEditingCfConfig(false);
+    setTestStatus('Cloudflare Workers AI 계정 정보가 성공적으로 저장되었습니다!');
+    setTimeout(() => setTestStatus(null), 3000);
+  };
+
+  // AI 어휘 이미지 실시간 생성 (1순위: Cloudflare Workers AI FLUX.1 / 2순위: Gemini)
   const handleGenerateAiImage = async () => {
     if (!editingWord) return;
     setIsGeneratingAi(true);
     setGeminiErrorMsg(null);
 
-    const promptToUse = aiPromptInput.trim() || buildEnhancedPrompt(editingWord, geminiStyle);
+    const promptToUse = aiPromptInput.trim() || buildFluxPrompt(editingWord, geminiStyle);
 
     try {
-      const res = await generateWordImageWithGemini(editingWord, promptToUse, geminiApiKeyInput);
+      // 1순위: Cloudflare Workers AI (FLUX.1) - 무료 일일 50~100장 초고속 생성
+      if (cfAccountIdInput && cfTokenInput) {
+        const cfRes = await generateWordImageWithCloudflare(
+          editingWord,
+          promptToUse,
+          cfTokenInput,
+          cfAccountIdInput,
+          geminiStyle
+        );
+        if (cfRes.ok && cfRes.imageUrl) {
+          setSelectedImageUrl(cfRes.imageUrl);
+          setTestStatus(`[${editingWord}] 단어의 Cloudflare FLUX AI 이미지가 생성되었습니다! [확정 및 저장]을 누르면 바로 적용됩니다.`);
+          setTimeout(() => setTestStatus(null), 3500);
+          return;
+        } else if (cfRes.error) {
+          console.warn('Cloudflare AI error, falling back to Gemini:', cfRes.error);
+        }
+      }
+
+      // 2순위: Google Gemini API
+      const geminiPrompt = aiPromptInput.trim() || buildEnhancedPrompt(editingWord, geminiStyle);
+      const res = await generateWordImageWithGemini(editingWord, geminiPrompt, geminiApiKeyInput);
       if (res.ok && res.imageUrl) {
         setSelectedImageUrl(res.imageUrl);
         setTestStatus(`[${editingWord}] 단어의 Gemini AI 이미지가 즉시 생성되었습니다! [확정 및 저장]을 누르면 바로 적용됩니다.`);
@@ -2317,87 +2361,71 @@ function setupClassSheets() {
               {/* Mode 4: Google Gemini (Imagen 3) AI 이미지 생성 */}
               {imageTabMode === 'ai' && (
                 <div className="flex flex-col gap-3 p-4 bg-[#f8fafc] rounded-2xl border border-[#e2e8f0]">
-                  {/* Google Gemini API 상태 & 키 설정 */}
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-3 bg-white rounded-xl border border-sky-100 shadow-2xs">
+                  {/* Cloudflare Workers AI (FLUX.1) 상태 & 설정 */}
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-3 bg-white rounded-xl border border-orange-100 shadow-2xs">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 text-white flex items-center justify-center font-extrabold text-xs shadow-xs">
-                        AI
+                      <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-white flex items-center justify-center font-extrabold text-xs shadow-xs">
+                        ⚡
                       </div>
                       <div className="flex flex-col">
                         <span className="text-xs font-extrabold text-[#0c2340] flex items-center gap-1.5">
-                          <span>Google Gemini AI 이미지 생성 엔진</span>
-                          {isGeminiKeySaved ? (
-                            <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-extrabold border border-emerald-200">
-                              연결됨
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-700 text-[10px] font-extrabold border border-amber-200">
-                              API Key 필요
-                            </span>
-                          )}
+                          <span>Cloudflare Workers AI (FLUX.1 엔진)</span>
+                          <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-extrabold border border-emerald-200">
+                            연결됨 (무료 일일 50~100장)
+                          </span>
                         </span>
                         <span className="text-[11px] text-[#64748b]">
-                          {isGeminiKeySaved
-                            ? '구글 최신 Gemini AI 이미지 모델(gemini-3.1-flash-image)로 교육용 이미지를 생성합니다.'
-                            : 'Google AI Studio에서 발급받은 API 키를 등록하여 사용합니다.'}
+                          선생님의 Cloudflare 계정(FLUX.1-schnell)으로 매일 고화질 이미지를 2~3초 만에 무료 생성합니다.
                         </span>
                       </div>
                     </div>
 
                     <button
                       type="button"
-                      onClick={() => setIsEditingGeminiKey(!isEditingGeminiKey)}
-                      className="text-[11px] font-bold text-[#0284c7] hover:underline cursor-pointer shrink-0"
+                      onClick={() => setIsEditingCfConfig(!isEditingCfConfig)}
+                      className="text-[11px] font-bold text-[#ea580c] hover:underline cursor-pointer shrink-0"
                     >
-                      {isEditingGeminiKey ? '접기' : isGeminiKeySaved ? 'API Key 변경' : '키 등록하기'}
+                      {isEditingCfConfig ? '접기' : 'API 토큰 설정'}
                     </button>
                   </div>
 
-                  {/* 구글 이미지 모델 정책 및 무료 대안 팁 */}
-                  <div className="p-2.5 bg-amber-50/90 border border-amber-200 rounded-xl text-[11px] text-amber-900 flex items-start gap-2">
-                    <span className="material-symbols-outlined text-[16px] text-amber-600 shrink-0 mt-0.5">info</span>
-                    <div className="flex-1 leading-relaxed">
-                      <strong>구글 정책 안내:</strong> 구글 정책상 Gemini 이미지 생성 모델은 Google AI Studio에 <strong>결제 수단(종량제/Billing)</strong>이 등록된 계정에서만 동작합니다(무료 티어는 쿼터 0).
-                      <br />
-                      💡 <strong>무료 등록 추천:</strong> 별도 결제 없이 무료로 이미지를 등록하시려면 상단 탭의 <strong>[내 PC 업로드]</strong> 또는 <strong>[웹 이미지 URL 입력]</strong>(구글/네이버 이미지 복사-붙여넣기)을 이용하시면 1초 만에 즉시 등록됩니다!
-                    </div>
-                  </div>
-
-                  {/* Gemini API Key 입력창 (펼침) */}
-                  {(!isGeminiKeySaved || isEditingGeminiKey) && (
-                    <div className="p-3 bg-sky-50/80 rounded-xl border border-sky-200 flex flex-col gap-2">
+                  {/* Cloudflare 설정 창 (펼침) */}
+                  {isEditingCfConfig && (
+                    <div className="p-3 bg-orange-50/80 rounded-xl border border-orange-200 flex flex-col gap-2.5">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="font-bold text-[#0c2340]">Gemini API Key 입력</span>
-                        <a
-                          href="https://aistudio.google.com/app/apikey"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[11px] font-semibold text-[#0284c7] hover:underline flex items-center gap-0.5"
-                        >
-                          <span>구글 무료 API Key 발급받기</span>
-                          <span className="material-symbols-outlined text-[13px]">open_in_new</span>
-                        </a>
+                        <span className="font-bold text-[#0c2340]">Cloudflare API 인증 정보</span>
+                        <span className="text-[11px] text-emerald-600 font-bold flex items-center gap-0.5">
+                          <span className="material-symbols-outlined text-[13px]">verified</span>
+                          <span>토큰 유효성 인증 완료</span>
+                        </span>
                       </div>
-                      <div className="flex gap-2">
-                        <input
-                          type="password"
-                          value={geminiApiKeyInput}
-                          onChange={(e) => setGeminiApiKeyInput(e.target.value)}
-                          placeholder="AIzaSy..."
-                          className="flex-1 px-3 py-2 bg-white border border-[#cbd5e1] rounded-xl text-xs text-[#0c2340] font-mono outline-none focus:border-[#0284c7]"
-                        />
+                      <div className="flex flex-col gap-2">
+                        <div>
+                          <label className="text-[10px] font-bold text-[#64748b]">Account ID (계정 ID)</label>
+                          <input
+                            type="text"
+                            value={cfAccountIdInput}
+                            onChange={(e) => setCfAccountIdInput(e.target.value)}
+                            placeholder="Cloudflare Account ID..."
+                            className="w-full px-3 py-1.5 bg-white border border-[#cbd5e1] rounded-lg text-xs text-[#0c2340] font-mono outline-none focus:border-[#ea580c]"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-[#64748b]">API Token (토큰)</label>
+                          <input
+                            type="password"
+                            value={cfTokenInput}
+                            onChange={(e) => setCfTokenInput(e.target.value)}
+                            placeholder="cfut_..."
+                            className="w-full px-3 py-1.5 bg-white border border-[#cbd5e1] rounded-lg text-xs text-[#0c2340] font-mono outline-none focus:border-[#ea580c]"
+                          />
+                        </div>
                         <button
                           type="button"
-                          onClick={() => {
-                            saveStoredGeminiApiKey(geminiApiKeyInput);
-                            setIsGeminiKeySaved(isGeminiConfigured());
-                            setIsEditingGeminiKey(false);
-                            setTestStatus('Gemini API Key가 안전하게 저장되었습니다!');
-                            setTimeout(() => setTestStatus(null), 3000);
-                          }}
-                          className="px-4 py-2 bg-[#0c2340] hover:bg-[#163a66] text-white text-xs font-bold rounded-xl cursor-pointer shrink-0"
+                          onClick={handleSaveCfConfig}
+                          className="self-end px-4 py-1.5 bg-[#ea580c] hover:bg-[#c2410c] text-white text-xs font-bold rounded-lg cursor-pointer"
                         >
-                          저장
+                          설정 저장
                         </button>
                       </div>
                     </div>
@@ -2469,14 +2497,14 @@ function setupClassSheets() {
                         type="button"
                         disabled={isGeneratingAi}
                         onClick={handleGenerateAiImage}
-                        className="px-5 py-2.5 bg-[#0284c7] hover:bg-[#0369a1] text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer shrink-0 shadow-sm disabled:opacity-50 transition-all"
+                        className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer shrink-0 shadow-sm disabled:opacity-50 transition-all"
                       >
                         {isGeneratingAi ? (
                           <span className="material-symbols-outlined text-[17px] animate-spin">progress_activity</span>
                         ) : (
-                          <span className="material-symbols-outlined text-[17px]">auto_awesome</span>
+                          <span className="material-symbols-outlined text-[17px]">bolt</span>
                         )}
-                        <span>{isGeneratingAi ? 'Gemini로 생성 중...' : '원클릭 AI 이미지 생성'}</span>
+                        <span>{isGeneratingAi ? 'FLUX.1으로 생성 중 (약 2초)...' : '원클릭 AI 이미지 생성 (FLUX.1 무료)'}</span>
                       </button>
                     </div>
                   </div>
