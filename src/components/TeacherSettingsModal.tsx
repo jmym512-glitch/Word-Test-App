@@ -2428,7 +2428,7 @@ function setupClassSheets() {
                         type="button"
                         onClick={() => {
                           setGeminiStyle('illustration');
-                          if (editingWord) setAiPromptInput(buildEnhancedPrompt(editingWord, 'illustration'));
+                          if (editingWord) setAiPromptInput(buildFluxPrompt(editingWord, 'illustration'));
                         }}
                         className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer border ${
                           geminiStyle === 'illustration'
@@ -2443,7 +2443,7 @@ function setupClassSheets() {
                         type="button"
                         onClick={() => {
                           setGeminiStyle('photo');
-                          if (editingWord) setAiPromptInput(buildEnhancedPrompt(editingWord, 'photo'));
+                          if (editingWord) setAiPromptInput(buildFluxPrompt(editingWord, 'photo'));
                         }}
                         className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer border ${
                           geminiStyle === 'photo'
@@ -2458,7 +2458,7 @@ function setupClassSheets() {
                         type="button"
                         onClick={() => {
                           setGeminiStyle('cute');
-                          if (editingWord) setAiPromptInput(buildEnhancedPrompt(editingWord, 'cute'));
+                          if (editingWord) setAiPromptInput(buildFluxPrompt(editingWord, 'cute'));
                         }}
                         className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer border ${
                           geminiStyle === 'cute'
@@ -2473,13 +2473,16 @@ function setupClassSheets() {
 
                   {/* 영문 프롬프트 입력 및 생성 버튼 */}
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-[#0c2340]">생성 프롬프트 (자동 구성됨, 직접 편집 가능)</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-[#0c2340]">생성 프롬프트 (자동 영문 변환 지원)</label>
+                      <span className="text-[10px] text-[#64748b]">한글 입력 시 고품질 영문 묘사로 자동 변환</span>
+                    </div>
                     <div className="flex flex-col sm:flex-row gap-2">
                       <input
                         type="text"
                         value={aiPromptInput}
                         onChange={(e) => setAiPromptInput(e.target.value)}
-                        placeholder="예: Clean vector-style educational illustration..."
+                        placeholder="단어 또는 영문 묘사 (예: 헤어디자이너 / A hair stylist cutting hair...)"
                         className="flex-1 px-3 py-2.5 bg-white border border-[#cbd5e1] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7]"
                       />
                       <button
