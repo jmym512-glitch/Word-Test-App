@@ -99,6 +99,8 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
     const currResult: QuestionResult = {
       questionNumber: currIdx + 1,
       word: currWord.word,
+      promptPhrase: currWord.promptPhrase,
+      fullPhrase: currWord.fullPhrase,
       userAnswer: userAns || '(시간 초과)',
       isCorrect,
       timeSpentSeconds: Math.round((Date.now() - questionStartTimeRef.current) / 1000),
@@ -112,6 +114,8 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
       remainingResults.push({
         questionNumber: i + 1,
         word: w.word,
+        promptPhrase: w.promptPhrase,
+        fullPhrase: w.fullPhrase,
         userAnswer: '(시간 초과 미응시)',
         isCorrect: false,
         timeSpentSeconds: 0,
@@ -119,6 +123,7 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
         syllables: w.syllables,
       });
     }
+
 
     const finalResults = [...questionResultsRef.current, currResult, ...remainingResults];
     alert('시험 제한 시간이 모두 경과했습니다. 현재까지 작성된 답안으로 자동 제출됩니다.');
@@ -165,12 +170,15 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
     const result: QuestionResult = {
       questionNumber: currentQuestionIndex + 1,
       word: currentWordItem.word,
+      promptPhrase: currentWordItem.promptPhrase,
+      fullPhrase: currentWordItem.fullPhrase,
       userAnswer: typedAnswer.trim(),
       isCorrect,
       timeSpentSeconds: timeSpentOnQuestion,
       category: currentWordItem.category,
       syllables: currentWordItem.syllables,
     };
+
 
     const nextResults = [...questionResults, result];
     setQuestionResults(nextResults);
@@ -303,6 +311,18 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
                 loading="eager"
               />
             </div>
+
+            {/* 연어(Collocation) 문제 제시창: e.g. "배드민턴을 (      )" */}
+            {currentWordItem.promptPhrase && (
+              <div className="w-full mt-1 py-3 px-4 bg-[#f8fafc] rounded-2xl border border-[#e2e8f0] flex items-center justify-center gap-2.5 shadow-2xs">
+                <span className="text-[20px] sm:text-[23px] font-black text-[#0c2340] tracking-tight">
+                  {currentWordItem.promptPhrase}
+                </span>
+                <span className="inline-flex items-center justify-center min-w-[76px] px-3.5 py-1 bg-white border-2 border-dashed border-[#0284c7] rounded-xl text-[18px] sm:text-[21px] font-black text-[#0284c7] shadow-2xs">
+                  (&nbsp;&nbsp;&nbsp;&nbsp;)
+                </span>
+              </div>
+            )}
           </div>
 
           {/* 2. 답안 입력 트레이 (단어를 입력하세요) */}
@@ -319,11 +339,22 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
               }`}
             >
               {typedAnswer.length === 0 ? (
-                <span className="text-[#94a3b8] text-sm sm:text-base font-semibold">
-                  단어를 입력하세요 ({targetWord.length} {targetWord.length === 1 ? 'Letter' : 'Letters'})
+                <span className="text-[#94a3b8] text-sm sm:text-base font-semibold text-center px-2">
+                  {currentWordItem.promptPhrase ? (
+                    <>
+                      <span className="text-[#0284c7] font-bold">'{currentWordItem.promptPhrase}'</span>에 알맞은 동사를 입력하세요 ({targetWord.length} {targetWord.length === 1 ? 'Letter' : 'Letters'})
+                    </>
+                  ) : (
+                    `단어를 입력하세요 (${targetWord.length} ${targetWord.length === 1 ? 'Letter' : 'Letters'})`
+                  )}
                 </span>
               ) : (
                 <div className="flex items-center justify-center gap-2 tracking-widest">
+                  {currentWordItem.promptPhrase && (
+                    <span className="text-xl sm:text-2xl font-bold text-[#64748b] mr-1">
+                      {currentWordItem.promptPhrase}
+                    </span>
+                  )}
                   {typedAnswer.split('').map((char, idx) => (
                     <span
                       key={idx}
@@ -338,6 +369,7 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
               )}
             </div>
           </div>
+
 
           {/* 3. 힌트 글자 블록 영역 (터치하여 입력 & 지우기) */}
           <div className="w-full max-w-[440px] mt-2 flex flex-col gap-2.5">

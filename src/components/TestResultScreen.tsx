@@ -241,7 +241,13 @@ export const TestResultScreen: React.FC<TestResultScreenProps> = ({
 
                     <div className="flex items-center justify-between">
                       <span className="text-[15px] font-bold text-[#0c2340]">
-                        목표 어휘: {res.word}
+                        {res.fullPhrase ? (
+                          <>
+                            <span className="text-[#0284c7] font-extrabold">{res.promptPhrase}</span> ( {res.word} )
+                          </>
+                        ) : (
+                          `목표 어휘: ${res.word}`
+                        )}
                       </span>
                       <span className="text-[11px] text-[#64748b]">
                         소요: {res.timeSpentSeconds}초
@@ -257,14 +263,15 @@ export const TestResultScreen: React.FC<TestResultScreenProps> = ({
                         }`}
                       >
                         <span className="font-bold">내 답안:</span>
-                        <span>{res.userAnswer}</span>
+                        <span>{res.promptPhrase ? `${res.promptPhrase} ${res.userAnswer}` : res.userAnswer}</span>
                       </div>
                       <div className="bg-[#f8fafc] text-[#0c2340] p-2 rounded-lg flex items-center gap-1.5 font-semibold border border-[#e2e8f0]">
                         <span className="font-bold">정답:</span>
-                        <span>{res.word}</span>
+                        <span>{res.fullPhrase || res.word}</span>
                       </div>
                     </div>
                   </div>
+
                 ))}
 
                 <div className="pt-2 flex justify-center">

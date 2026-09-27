@@ -5,6 +5,7 @@ import {
   VOCAB_IMAGES,
   SEJONG_PRESET_UNITS,
   createWordItem,
+  parseWordToken,
   getCandidateImagesForWord,
   getWordDisplayImage,
   getCustomVocabImages,
@@ -120,7 +121,11 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
   // 모달 열림 또는 선택 단원 변경 시 편집 폼 자동 동기화
   useEffect(() => {
     if (isOpen && currentEditingUnit) {
-      setWordInputText(currentEditingUnit.words.map((w) => w.word).join(', '));
+      setWordInputText(
+        currentEditingUnit.words
+          .map((w) => (w.promptPhrase ? `${w.promptPhrase}:${w.word}` : w.word))
+          .join(', ')
+      );
       setUnitTitle(currentEditingUnit.title);
       setUnitCategory((currentEditingUnit.category as CourseCategory) || '1A 한국어');
       setUnitTotalMinutes(currentEditingUnit.totalTimeLimitMinutes || 10);
@@ -313,7 +318,11 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     setSelectedUnitId(unitId);
     const u = units.find((x) => x.id === unitId);
     if (u) {
-      setWordInputText(u.words.map((w) => w.word).join(', '));
+      setWordInputText(
+        u.words
+          .map((w) => (w.promptPhrase ? `${w.promptPhrase}:${w.word}` : w.word))
+          .join(', ')
+      );
       setUnitTitle(u.title);
       setUnitCategory((u.category as CourseCategory) || '1A 한국어');
       setUnitTotalMinutes(u.totalTimeLimitMinutes || 10);
@@ -337,7 +346,10 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     const updatedText = remainingWords.join(', ');
     setWordInputText(updatedText);
 
-    const updatedWordItems = currentEditingUnit.words.filter((w) => w.word !== wordToDelete);
+    const { targetWord: delTarget, promptPhrase: delPrompt } = parseWordToken(wordToDelete);
+    const updatedWordItems = currentEditingUnit.words.filter(
+      (w) => !(w.word === delTarget && (w.promptPhrase || '') === (delPrompt || ''))
+    );
     onUpdateUnitWords(currentEditingUnit.id, updatedWordItems);
 
     setTestStatus(`[${wordToDelete}] 단어가 단원 어휘 목록에서 즉시 삭제되었습니다.`);
@@ -347,8 +359,8 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
   // 새 어휘 즉시 추가
   const handleQuickAddWord = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const wordToAdd = quickWordInput.trim();
-    if (!wordToAdd) return;
+    const tokenToAdd = quickWordInput.trim();
+    if (!tokenToAdd) return;
     if (!currentEditingUnit) return;
 
     const currentWordsList = wordInputText
@@ -356,24 +368,31 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
       .map((w) => w.trim())
       .filter((w) => w.length > 0);
 
-    if (currentWordsList.includes(wordToAdd)) {
-      alert(`[${wordToAdd}] 어휘는 이미 단원 목록에 존재합니다.`);
+    if (currentWordsList.includes(tokenToAdd)) {
+      alert(`[${tokenToAdd}] 어휘는 이미 단원 목록에 존재합니다.`);
       return;
     }
 
-    const newWordItem = createWordItem(wordToAdd, `${wordToAdd} 어휘 학습`, '일반', undefined, {
-      partOfSpeech: '명사(N)',
-      englishMeaning: wordToAdd,
-      imageUrl: getWordDisplayImage(wordToAdd),
-    });
+    const { promptPhrase, targetWord } = parseWordToken(tokenToAdd);
+    const newWordItem = createWordItem(
+      tokenToAdd,
+      promptPhrase ? `${promptPhrase} ${targetWord} 어휘 학습` : `${targetWord} 어휘 학습`,
+      '일반',
+      undefined,
+      {
+        partOfSpeech: promptPhrase ? '동사(V)' : (targetWord.endsWith('다') ? '동사(V)' : '명사(N)'),
+        englishMeaning: targetWord,
+        imageUrl: getWordDisplayImage(tokenToAdd),
+      }
+    );
 
     const updatedWords = [...currentEditingUnit.words, newWordItem];
-    const updatedText = currentWordsList.length > 0 ? `${wordInputText.trim()}, ${wordToAdd}` : wordToAdd;
+    const updatedText = currentWordsList.length > 0 ? `${wordInputText.trim()}, ${tokenToAdd}` : tokenToAdd;
 
     setWordInputText(updatedText);
     onUpdateUnitWords(currentEditingUnit.id, updatedWords);
     setQuickWordInput('');
-    setTestStatus(`[${wordToAdd}] 단어가 단원에 새로 추가되었습니다.`);
+    setTestStatus(`[${tokenToAdd}] 단어가 단원에 새로 추가되었습니다.`);
     setTimeout(() => setTestStatus(null), 2500);
   };
 
@@ -400,14 +419,17 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
       return;
     }
 
-    const newWordItems: WordItem[] = parsedWords.map((word) => {
-      const existing = currentEditingUnit.words.find((w) => w.word === word);
+    const newWordItems: WordItem[] = parsedWords.map((token) => {
+      const { promptPhrase, targetWord } = parseWordToken(token);
+      const existing = currentEditingUnit.words.find(
+        (w) => w.word === targetWord && (w.promptPhrase || '') === (promptPhrase || '')
+      );
       return (
         existing ||
-        createWordItem(word, `${word} 어휘 학습`, '일반', undefined, {
-          partOfSpeech: '명사(N)',
-          englishMeaning: word,
-          imageUrl: getWordDisplayImage(word),
+        createWordItem(token, `${promptPhrase ? `${promptPhrase} ` : ''}${targetWord} 어휘 학습`, '일반', undefined, {
+          partOfSpeech: promptPhrase ? '동사(V)' : (targetWord.endsWith('다') ? '동사(V)' : '명사(N)'),
+          englishMeaning: targetWord,
+          imageUrl: getWordDisplayImage(token),
         })
       );
     });
@@ -442,13 +464,14 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     }
 
     const newUnitId = `custom-unit-${Date.now()}`;
-    const wordItems: WordItem[] = parsedWords.map((word) =>
-      createWordItem(word, `${word} 어휘 학습`, '학습어휘', undefined, {
-        partOfSpeech: '명사(N)',
-        englishMeaning: word,
-        imageUrl: getWordDisplayImage(word),
-      })
-    );
+    const wordItems: WordItem[] = parsedWords.map((token) => {
+      const { promptPhrase, targetWord } = parseWordToken(token);
+      return createWordItem(token, `${promptPhrase ? `${promptPhrase} ` : ''}${targetWord} 어휘 학습`, '학습어휘', undefined, {
+        partOfSpeech: promptPhrase ? '동사(V)' : (targetWord.endsWith('다') ? '동사(V)' : '명사(N)'),
+        englishMeaning: targetWord,
+        imageUrl: getWordDisplayImage(token),
+      });
+    });
 
     const createdUnit: ExamUnit = {
       id: newUnitId,
@@ -461,7 +484,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
       questionCount: Math.min(10, wordItems.length),
       timePerQuestionSeconds: 45,
       totalTimeLimitMinutes: Number(newExamTotalMinutes) || 10,
-      wordsSummary: `${wordItems.slice(0, 3).map((w) => w.word).join(', ')} 등 ${wordItems.length}개`,
+      wordsSummary: `${wordItems.slice(0, 3).map((w) => (w.promptPhrase ? `${w.promptPhrase} ${w.word}` : w.word)).join(', ')} 등 ${wordItems.length}개`,
       words: wordItems,
       level: `대진대 세종한국어 ${newExamCategory}`,
     };
@@ -499,15 +522,18 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
         .map((w) => w.trim())
         .filter((w) => w.length > 0);
 
-      const updatedWords = activeWordStrings.map((word) => {
-        const existing = currentEditingUnit.words.find((w) => w.word === word);
+      const updatedWords = activeWordStrings.map((token) => {
+        const { promptPhrase, targetWord } = parseWordToken(token);
+        const existing = currentEditingUnit.words.find(
+          (w) => w.word === targetWord && (w.promptPhrase || '') === (promptPhrase || '')
+        );
         const item =
           existing ||
-          createWordItem(word, `${word} 어휘 학습`, '일반', undefined, {
-            partOfSpeech: '명사(N)',
-            englishMeaning: word,
+          createWordItem(token, `${promptPhrase ? `${promptPhrase} ` : ''}${targetWord} 어휘 학습`, '일반', undefined, {
+            partOfSpeech: promptPhrase ? '동사(V)' : (targetWord.endsWith('다') ? '동사(V)' : '명사(N)'),
+            englishMeaning: targetWord,
           });
-        if (word === editingWord) {
+        if (token === editingWord || targetWord === editingWord) {
           return { ...item, imageUrl: selectedImageUrl };
         }
         return item;
@@ -535,15 +561,18 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
         .map((w) => w.trim())
         .filter((w) => w.length > 0);
 
-      const updatedWords = activeWordStrings.map((word) => {
-        const existing = currentEditingUnit.words.find((w) => w.word === word);
+      const updatedWords = activeWordStrings.map((token) => {
+        const { promptPhrase, targetWord } = parseWordToken(token);
+        const existing = currentEditingUnit.words.find(
+          (w) => w.word === targetWord && (w.promptPhrase || '') === (promptPhrase || '')
+        );
         const item =
           existing ||
-          createWordItem(word, `${word} 어휘 학습`, '일반', undefined, {
-            partOfSpeech: '명사(N)',
-            englishMeaning: word,
+          createWordItem(token, `${promptPhrase ? `${promptPhrase} ` : ''}${targetWord} 어휘 학습`, '일반', undefined, {
+            partOfSpeech: promptPhrase ? '동사(V)' : (targetWord.endsWith('다') ? '동사(V)' : '명사(N)'),
+            englishMeaning: targetWord,
           });
-        if (word === editingWord) {
+        if (token === editingWord || targetWord === editingWord) {
           return { ...item, imageUrl: defaultUrl };
         }
         return item;
@@ -1317,8 +1346,13 @@ function setupClassSheets() {
                       rows={3}
                       value={wordInputText}
                       onChange={(e) => setWordInputText(e.target.value)}
+                      placeholder="예: 배드민턴을:치다, 자전거를:타다, 사진을:찍다 또는 사과, 의사"
                       className="p-3 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7] font-mono leading-relaxed"
                     />
+                    <p className="text-[11px] text-slate-500 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[14px] text-sky-600">info</span>
+                      <span>연어/동사 출제: <code>배드민턴을:치다</code> 형식으로 입력하면 문제에 <code>배드민턴을 (      )</code>이 제시되고 동사를 맞추는 퀴즈로 출제됩니다.</span>
+                    </p>
                   </div>
 
                   {/* Quick Word Add Bar */}
@@ -1334,7 +1368,7 @@ function setupClassSheets() {
                           handleQuickAddWord();
                         }
                       }}
-                      placeholder="추가할 새 어휘 직접 입력 (예: 컴퓨터) 후 Enter 또는 [단어 추가]"
+                      placeholder="추가할 새 어휘 직접 입력 (예: 컴퓨터 또는 배드민턴을:치다) 후 Enter 또는 [단어 추가]"
                       className="flex-1 bg-white border border-[#cbd5e1] px-3 py-1.5 rounded-lg text-xs outline-none focus:border-[#0284c7] text-[#0c2340]"
                     />
                     <button
@@ -1361,28 +1395,42 @@ function setupClassSheets() {
                         .split(/[\n,]+/)
                         .map((w) => w.trim())
                         .filter((w) => w.length > 0)
-                        .map((word) => {
-                          const imgUrl = getWordDisplayImage(word);
+                        .map((rawToken) => {
+                          const { promptPhrase, targetWord } = parseWordToken(rawToken);
+                          const imgUrl = getWordDisplayImage(rawToken);
                           return (
                             <div
-                              key={word}
+                              key={rawToken}
                               className="group relative p-2.5 bg-white border border-[#e2e8f0] rounded-xl flex items-center gap-2.5 shadow-2xs hover:border-[#0c2340] transition-colors"
                             >
                               <img
                                 src={imgUrl}
-                                alt={word}
+                                alt={rawToken}
                                 className="w-11 h-11 rounded-lg object-cover bg-slate-100 border border-slate-200 shrink-0"
                               />
                               <div className="flex flex-col min-w-0 flex-1">
                                 <div className="flex items-center justify-between gap-1">
-                                  <span className="font-bold text-xs text-[#0c2340] truncate" title={word}>
-                                    {word}
-                                  </span>
+                                  <div className="min-w-0 flex-1 truncate" title={rawToken}>
+                                    {promptPhrase ? (
+                                      <>
+                                        <span className="text-[10px] text-sky-600 font-semibold block leading-tight truncate">
+                                          {promptPhrase}
+                                        </span>
+                                        <span className="font-bold text-xs text-[#0c2340] leading-tight block truncate">
+                                          ({targetWord})
+                                        </span>
+                                      </>
+                                    ) : (
+                                      <span className="font-bold text-xs text-[#0c2340] truncate block">
+                                        {targetWord}
+                                      </span>
+                                    )}
+                                  </div>
                                   {/* 개별 단어 삭제 버튼 */}
                                   <button
                                     type="button"
-                                    onClick={() => handleDeleteWordFromUnit(word)}
-                                    title={`[${word}] 단어 삭제`}
+                                    onClick={() => handleDeleteWordFromUnit(rawToken)}
+                                    title={`[${rawToken}] 단어 삭제`}
                                     className="w-5 h-5 rounded text-[#94a3b8] hover:text-red-600 hover:bg-red-50 flex items-center justify-center transition-colors cursor-pointer shrink-0"
                                   >
                                     <span className="material-symbols-outlined text-[15px]">close</span>
@@ -1390,7 +1438,7 @@ function setupClassSheets() {
                                 </div>
                                 <button
                                   type="button"
-                                  onClick={() => handleOpenImageEditor(word)}
+                                  onClick={() => handleOpenImageEditor(rawToken)}
                                   className="mt-1 text-[10px] font-bold text-[#0284c7] hover:text-[#0369a1] flex items-center gap-0.5 cursor-pointer self-start"
                                 >
                                   <span className="material-symbols-outlined text-[13px]">image</span>
@@ -1519,11 +1567,15 @@ function setupClassSheets() {
                   <textarea
                     rows={8}
                     required
-                    placeholder="예: 영화, 음악, 여행, 등산, 사진, 요리, 수영, 축구, 산책, 게임"
+                    placeholder="예: 영화, 음악, 여행, 배드민턴을:치다, 자전거를:타다, 사진을:찍다"
                     value={newExamWords}
                     onChange={(e) => setNewExamWords(e.target.value)}
                     className="w-full p-3.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7] font-mono leading-relaxed min-h-[175px]"
                   />
+                  <p className="text-[11px] text-slate-500 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[14px] text-sky-600">info</span>
+                    <span>연어/동사 출제: <code>배드민턴을:치다</code> 형식으로 입력하면 문제에 <code>배드민턴을 (      )</code>이 제시됩니다.</span>
+                  </p>
                 </div>
               </div>
 
@@ -1543,27 +1595,41 @@ function setupClassSheets() {
                       .split(/[\n,]+/)
                       .map((w) => w.trim())
                       .filter((w) => w.length > 0)
-                      .map((word) => {
-                        const imgUrl = getWordDisplayImage(word);
+                      .map((rawToken) => {
+                        const { promptPhrase, targetWord } = parseWordToken(rawToken);
+                        const imgUrl = getWordDisplayImage(rawToken);
                         return (
                           <div
-                            key={word}
+                            key={rawToken}
                             className="group relative p-2.5 bg-white border border-[#e2e8f0] rounded-xl flex items-center gap-2.5 shadow-2xs hover:border-[#0c2340] transition-colors"
                           >
                             <img
                               src={imgUrl}
-                              alt={word}
+                              alt={rawToken}
                               className="w-10 h-10 rounded-lg object-cover bg-slate-100 border border-slate-200 shrink-0"
                             />
                             <div className="flex flex-col min-w-0 flex-1">
                               <div className="flex items-center justify-between gap-1">
-                                <span className="font-bold text-xs text-[#0c2340] truncate" title={word}>
-                                  {word}
-                                </span>
+                                <div className="min-w-0 flex-1 truncate" title={rawToken}>
+                                  {promptPhrase ? (
+                                    <>
+                                      <span className="text-[10px] text-sky-600 font-semibold block leading-tight truncate">
+                                        {promptPhrase}
+                                      </span>
+                                      <span className="font-bold text-xs text-[#0c2340] leading-tight block truncate">
+                                        ({targetWord})
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <span className="font-bold text-xs text-[#0c2340] truncate block">
+                                      {targetWord}
+                                    </span>
+                                  )}
+                                </div>
                                 <button
                                   type="button"
-                                  onClick={() => handleDeleteWordFromNewExam(word)}
-                                  title={`[${word}] 단어 삭제`}
+                                  onClick={() => handleDeleteWordFromNewExam(rawToken)}
+                                  title={`[${rawToken}] 단어 삭제`}
                                   className="w-5 h-5 rounded text-[#94a3b8] hover:text-red-600 hover:bg-red-50 flex items-center justify-center transition-colors cursor-pointer shrink-0"
                                 >
                                   <span className="material-symbols-outlined text-[14px]">close</span>
@@ -1571,7 +1637,7 @@ function setupClassSheets() {
                               </div>
                               <button
                                 type="button"
-                                onClick={() => handleOpenImageEditor(word)}
+                                onClick={() => handleOpenImageEditor(rawToken)}
                                 className="mt-0.5 text-[10px] font-bold text-[#0284c7] hover:text-[#0369a1] flex items-center gap-0.5 cursor-pointer self-start"
                               >
                                 <span className="material-symbols-outlined text-[12px]">image</span>

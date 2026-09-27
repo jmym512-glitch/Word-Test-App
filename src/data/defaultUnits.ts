@@ -89,9 +89,43 @@ export const VOCAB_IMAGES: Record<string, string> = {
   '지도': 'https://images.unsplash.com/photo-1524661135-423995f22d0b?w=600&auto=format&fit=crop&q=80',
   '호수': 'https://images.unsplash.com/photo-1439066615861-d1af74d74000?w=600&auto=format&fit=crop&q=80',
   '허리': 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=600&auto=format&fit=crop&q=80',
+
+  // 세종한국어 2A 2과 여가 활동 및 연어 어휘 이미지
+  '배드민턴': 'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=600&auto=format&fit=crop&q=80',
+  '배드민턴을 치다': 'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=600&auto=format&fit=crop&q=80',
+  '치다': 'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=600&auto=format&fit=crop&q=80',
+  '자전거': 'https://images.unsplash.com/photo-1485965120184-e220f721d03e?w=600&auto=format&fit=crop&q=80',
+  '자전거를 타다': 'https://images.unsplash.com/photo-1485965120184-e220f721d03e?w=600&auto=format&fit=crop&q=80',
+  '타다': 'https://images.unsplash.com/photo-1485965120184-e220f721d03e?w=600&auto=format&fit=crop&q=80',
+  '사진을 찍다': 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=600&auto=format&fit=crop&q=80',
+  '풍경 사진을 찍다': 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=600&auto=format&fit=crop&q=80',
+  '풍경': 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=600&auto=format&fit=crop&q=80',
+  '찍다': 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=600&auto=format&fit=crop&q=80',
+  '악기': 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
+  '악기를 연주하다': 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
+  '연주하다': 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
+  '음식을 만들다': 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=600&auto=format&fit=crop&q=80',
+  '음식': 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=600&auto=format&fit=crop&q=80',
+  '만들다': 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=600&auto=format&fit=crop&q=80',
+  '만화': 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600&auto=format&fit=crop&q=80',
+  '만화를 그리다': 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600&auto=format&fit=crop&q=80',
+  '그리다': 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600&auto=format&fit=crop&q=80',
+  '소설': 'https://images.unsplash.com/photo-1495640388908-05fa85288e61?w=600&auto=format&fit=crop&q=80',
+  '소설을 읽다': 'https://images.unsplash.com/photo-1495640388908-05fa85288e61?w=600&auto=format&fit=crop&q=80',
+  '읽다': 'https://images.unsplash.com/photo-1495640388908-05fa85288e61?w=600&auto=format&fit=crop&q=80',
+  '스포츠 경기': 'https://images.unsplash.com/photo-1471295253337-3ceaaedca402?w=600&auto=format&fit=crop&q=80',
+  '스포츠 경기를 보다': 'https://images.unsplash.com/photo-1471295253337-3ceaaedca402?w=600&auto=format&fit=crop&q=80',
+  '운동 모임에 가다': 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=600&auto=format&fit=crop&q=80',
+  '등산': 'https://images.unsplash.com/photo-1551632811-561732d1e306?w=600&auto=format&fit=crop&q=80',
+  '등산을 하다': 'https://images.unsplash.com/photo-1551632811-561732d1e306?w=600&auto=format&fit=crop&q=80',
+  '체육관': 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=600&auto=format&fit=crop&q=80',
+  '집안일': 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=600&auto=format&fit=crop&q=80',
+  '스파게티': 'https://images.unsplash.com/photo-1621996346565-e3d5d6281781?w=600&auto=format&fit=crop&q=80',
+  '박수': 'https://images.unsplash.com/photo-1516280440614-37939bbacd81?w=600&auto=format&fit=crop&q=80',
 };
 
-export const DAEJIN_DATA_VERSION = 'v20260918_3';
+export const DAEJIN_DATA_VERSION = 'v20260927_1';
+
 
 // 로컬 스토리지에 저장된 교사 생성/커스텀 어휘 이미지 조회
 export function getCustomVocabImages(): Record<string, string> {
@@ -150,16 +184,47 @@ export function clearCustomVocabImages(): void {
 // 어휘의 공식 기본 제공 이미지 URL 반환
 export function getDefaultVocabImage(word: string): string {
   if (VOCAB_IMAGES[word]) return VOCAB_IMAGES[word];
+  if (word.includes(':') || word.includes('：')) {
+    const [prefix, answer] = word.split(/[:：]/).map((s) => s.trim());
+    const full = `${prefix} ${answer}`;
+    if (VOCAB_IMAGES[full]) return VOCAB_IMAGES[full];
+    if (VOCAB_IMAGES[prefix]) return VOCAB_IMAGES[prefix];
+    const strippedPrefix = prefix.replace(/[을를이가에에서]$/, '').trim();
+    if (VOCAB_IMAGES[strippedPrefix]) return VOCAB_IMAGES[strippedPrefix];
+  }
+  const stripped = word.replace(/[을를이가에에서]$/, '').trim();
+  if (VOCAB_IMAGES[stripped]) return VOCAB_IMAGES[stripped];
   return 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=600&auto=format&fit=crop&q=80';
 }
 
 // 어휘의 최신 이미지 URL 반환 (커스텀 생성 > 기본 딕셔너리 > 폴백)
 export function getWordDisplayImage(word: string, fallbackUrl?: string): string {
+  if (!word) return fallbackUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=600&auto=format&fit=crop&q=80';
   const customImages = getCustomVocabImages();
   if (customImages[word]) return customImages[word];
   if (VOCAB_IMAGES[word]) return VOCAB_IMAGES[word];
+
+  // 콜론이나 연어 구문 처리
+  if (word.includes(':') || word.includes('：')) {
+    const [prefix, answer] = word.split(/[:：]/).map((s) => s.trim());
+    const full = `${prefix} ${answer}`;
+    if (customImages[full]) return customImages[full];
+    if (VOCAB_IMAGES[full]) return VOCAB_IMAGES[full];
+    if (customImages[prefix]) return customImages[prefix];
+    if (VOCAB_IMAGES[prefix]) return VOCAB_IMAGES[prefix];
+    const strippedPrefix = prefix.replace(/[을를이가에에서]$/, '').trim();
+    if (customImages[strippedPrefix]) return customImages[strippedPrefix];
+    if (VOCAB_IMAGES[strippedPrefix]) return VOCAB_IMAGES[strippedPrefix];
+  }
+
+  // 조사 제거 단어 매칭 (예: "배드민턴을" -> "배드민턴")
+  const stripped = word.replace(/[을를이가에에서]$/, '').trim();
+  if (customImages[stripped]) return customImages[stripped];
+  if (VOCAB_IMAGES[stripped]) return VOCAB_IMAGES[stripped];
+
   return fallbackUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=600&auto=format&fit=crop&q=80';
 }
+
 
 // 교사용 이미지 선택 모달에서 사용할 단어별 고화질 추천 이미지 후보 (4종)
 export const CANDIDATE_IMAGE_COLLECTIONS: Record<string, string[]> = {
@@ -299,27 +364,75 @@ export function formatPartOfSpeech(pos?: string): string {
     .replace(/형용사(?!\(A\))/g, '형용사(A)');
 }
 
+// 연어(Collocation) 입력 토큰 파싱: "배드민턴을:치다" -> promptPhrase: "배드민턴을", targetWord: "치다", fullPhrase: "배드민턴을 치다"
+export function parseWordToken(rawInput: string): { promptPhrase?: string; targetWord: string; fullPhrase?: string } {
+  const trimmed = (rawInput || '').trim();
+  const colonMatch = trimmed.match(/^([^:：]+)[:：](.+)$/);
+  if (colonMatch) {
+    const prompt = colonMatch[1].trim();
+    const answer = colonMatch[2].trim();
+    return {
+      promptPhrase: prompt,
+      targetWord: answer,
+      fullPhrase: `${prompt} ${answer}`,
+    };
+  }
+  return { targetWord: trimmed };
+}
+
 export function createWordItem(
-  word: string,
+  rawInput: string,
   meaning: string,
   category: string,
   clueHint?: string,
   extra?: { partOfSpeech?: string; englishMeaning?: string; exampleSentence?: string; romanization?: string; imageUrl?: string }
 ): WordItem {
+  const { promptPhrase, targetWord, fullPhrase } = parseWordToken(rawInput);
+
+  // 품사 자동 감지: 목표어가 '~다'로 끝나거나 연어 문제인 경우 동사(V)로 기본 설정
+  let pos = extra?.partOfSpeech;
+  if (!pos) {
+    if (targetWord.endsWith('다') || promptPhrase) {
+      pos = '동사(V)';
+    } else {
+      pos = '명사(N)';
+    }
+  }
+
+  const imageKey = fullPhrase || rawInput;
+  const promptKey = promptPhrase ? promptPhrase.replace(/[을를이가에에서]$/, '').trim() : '';
+  const resolvedImg =
+    extra?.imageUrl ||
+    getWordDisplayImage(imageKey) ||
+    (promptKey ? getWordDisplayImage(promptKey) : '') ||
+    getWordDisplayImage(targetWord);
+
+  const displayClue =
+    clueHint ||
+    (promptPhrase
+      ? `'${promptPhrase}' 뒤에 알맞은 짝꿍 동사 기본형`
+      : `${category} 관련 세종한국어 핵심 어휘`);
+
+  const displayMeaning = meaning || (fullPhrase ? `${fullPhrase} 어휘 학습` : `${targetWord} 어휘 학습`);
+  const displayEnglish = extra?.englishMeaning || (fullPhrase ? fullPhrase : displayMeaning.split('·')[0].trim());
+
   return {
-    id: `w-${word}`,
-    word,
-    meaning,
+    id: `w-${rawInput.replace(/[:：\s]/g, '-')}`,
+    word: targetWord,
+    promptPhrase,
+    fullPhrase,
+    meaning: displayMeaning,
     category,
-    imageUrl: extra?.imageUrl || getWordDisplayImage(word),
-    clueHint: clueHint || `${category} 관련 세종한국어 핵심 어휘`,
-    partOfSpeech: extra?.partOfSpeech ? formatPartOfSpeech(extra.partOfSpeech) : '명사(N)',
-    englishMeaning: extra?.englishMeaning || meaning.split('·')[0].trim(),
-    exampleSentence: extra?.exampleSentence,
+    imageUrl: resolvedImg,
+    clueHint: displayClue,
+    partOfSpeech: formatPartOfSpeech(pos),
+    englishMeaning: displayEnglish,
+    exampleSentence: extra?.exampleSentence || (fullPhrase ? `주말에 보통 ${fullPhrase}.` : undefined),
     romanization: extra?.romanization,
-    syllables: decomposeWord(word),
+    syllables: decomposeWord(targetWord),
   };
 }
+
 
 // [자모] 단모음, 자음 기초 단어 시험 (총 38개 어휘 중 10문항 무작위 출제)
 export const JAMO_UNIT: ExamUnit = {

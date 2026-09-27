@@ -8,6 +8,8 @@ export interface SyllableDecomposition {
 export interface WordItem {
   id: string;
   word: string;
+  promptPhrase?: string; // 연어(Collocation) 문제 제시어 (예: "배드민턴을")
+  fullPhrase?: string;   // 전체 연어 구문 (예: "배드민턴을 치다")
   meaning: string;
   category: string;
   imageUrl: string;
@@ -18,6 +20,7 @@ export interface WordItem {
   romanization?: string; // 로마자 발음
   syllables: SyllableDecomposition[];
 }
+
 
 export type CourseCategory = '1A 한국어' | '1B 한국어' | '2A 한국어' | '2B 한국어';
 
@@ -59,12 +62,15 @@ export type StudentProfile = LearnerProfile;
 export interface QuestionResult {
   questionNumber: number;
   word: string;
+  promptPhrase?: string;
+  fullPhrase?: string;
   userAnswer: string;
   isCorrect: boolean;
   timeSpentSeconds: number;
   category: string;
   syllables: SyllableDecomposition[];
 }
+
 
 export interface TestSubmission {
   id: string;
