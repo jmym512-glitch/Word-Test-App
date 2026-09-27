@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { ExamUnit, QuestionResult, WordItem } from '../types';
-import { VOCAB_IMAGES, formatPartOfSpeech, getWordDisplayImage } from '../data/defaultUnits';
+import { VOCAB_IMAGES, formatPartOfSpeech, getWordDisplayImage, getWordEnglishMeaning } from '../data/defaultUnits';
 import { generateQuizBlocks, QuizBlock } from '../utils/quizDistractors';
 
 interface TestSessionScreenProps {
@@ -228,15 +228,17 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
   const formattedTime = `${String(minutesLeft).padStart(2, '0')}:${String(secondsLeft).padStart(2, '0')}`;
 
   const displayImageUrl = getWordDisplayImage(currentWordItem.word, currentWordItem.imageUrl);
-  const displayPartOfSpeech = formatPartOfSpeech(currentWordItem.partOfSpeech);
-  const isCollocation = Boolean(currentWordItem.promptPhrase);
-  const rawMeaning = currentWordItem.englishMeaning || currentWordItem.meaning.split('·')[0].trim();
-  // 연어 문제이거나, 의미 텍스트가 정답 단어를 스포일러하는 경우 Meaning 숨김
-  const shouldShowMeaning =
-    !isCollocation &&
-    Boolean(rawMeaning) &&
-    rawMeaning.toLowerCase() !== targetWord.toLowerCase() &&
-    !rawMeaning.includes(targetWord);
+  const isCollocation = Boolean(currentWordItem.promptPhrase) || currentWordItem.partOfSpeech?.startsWith('구');
+  const displayPartOfSpeech = isCollocation
+    ? '구(Phrase)'
+    : formatPartOfSpeech(currentWordItem.partOfSpeech);
+
+  // 명사(N), 동사(V), 형용사(A) 문제에서는 Meaning으로 영어가 출력되고, '연어' 문제는 Meaning이 출력되지 않음
+  const englishMeaning = isCollocation
+    ? ''
+    : getWordEnglishMeaning(targetWord, currentWordItem.englishMeaning);
+
+  const shouldShowMeaning = !isCollocation && Boolean(englishMeaning);
 
   return (
     <div className="w-full max-w-[720px] mx-auto px-4 sm:px-6 py-6 sm:py-8 select-none">
@@ -295,14 +297,20 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
           <div className="w-full max-w-[440px] bg-white rounded-3xl p-4 sm:p-5 border border-[#e2e8f0] shadow-sm flex flex-col items-center gap-3">
             {/* Top Bar: 품사 뱃지 & 영문 의미 + 글자 수 */}
             <div className="w-full flex items-center justify-between px-1">
-              <span className="px-3.5 py-1.5 rounded-full bg-[#f0f9ff] text-[#0284c7] text-[13.5px] sm:text-[14px] font-black border border-[#bae6fd] tracking-tight shadow-2xs">
+              <span
+                className={`px-3.5 py-1.5 rounded-full text-[13.5px] sm:text-[14px] font-black border tracking-tight shadow-2xs ${
+                  isCollocation
+                    ? 'bg-purple-50 text-purple-700 border-purple-200'
+                    : 'bg-[#f0f9ff] text-[#0284c7] border-[#bae6fd]'
+                }`}
+              >
                 {displayPartOfSpeech}
               </span>
 
               <div className="flex items-center gap-2">
                 {shouldShowMeaning && (
                   <span className="text-[16px] sm:text-[17px] font-black text-[#0c2340] tracking-tight">
-                    Meaning: <span className="text-[#0284c7]">{rawMeaning}</span>
+                    Meaning: <span className="text-[#0284c7]">{englishMeaning}</span>
                   </span>
                 )}
                 <span className="px-2.5 py-1 rounded-full bg-[#f1f5f9] text-[#475569] text-xs font-extrabold border border-[#e2e8f0]">

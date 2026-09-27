@@ -379,10 +379,339 @@ export function getCandidateImagesForWord(word: string): string[] {
   ];
 }
 
-// 초급 학습자를 위한 품사 표기 정규화 헬퍼 (명사(N), 동사(V), 형용사(A))
+// 초급 학습자를 위한 대표 형용사 목록
+export const SEJONG_ADJECTIVES = new Set([
+  '크다', '작다', '많다', '적다', '좋다', '나쁘다', '재미있다', '재미없다', '맛있다', '맛없다',
+  '비싸다', '싸다', '예쁘다', '멋있다', '바쁘다', '한가하다', '쉽다', '어렵다', '덥다', '춥다',
+  '따뜻하다', '시원하다', '맑다', '흐리다', '가깝다', '멀다', '조용하다', '시끄럽다', '깨끗하다',
+  '더럽다', '복잡하다', '편하다', '불편하다', '친절하다', '행복하다', '슬프다', '아프다', '피곤하다',
+  '길다', '짧다', '무겁다', '가볍다', '높다', '낮다', '넓다', '좁다', '빠르다', '느리다',
+  '착하다', '똑똑하다', '유명하다', '심심하다', '귀엽다', '맵다', '달다', '짜다', '싱겁다', '쓰다'
+]);
+
+// 세종한국어 1A~2B 및 일상 어휘 영문 딕셔너리
+export const VOCAB_ENGLISH_DICTIONARY: Record<string, string> = {
+  // 1과 직업 및 일터
+  '프로그래머': 'Programmer',
+  '헤어디자이너': 'Hair Stylist / Designer',
+  '바리스타': 'Barista',
+  '요리사': 'Chef / Cook',
+  '통역사': 'Interpreter',
+  '제빵사': 'Baker',
+  '관광가이드': 'Tour Guide',
+  '유학생': 'International Student',
+  '교사': 'Teacher',
+  '선생님': 'Teacher',
+  '회사원': 'Office Worker',
+  '의사': 'Doctor',
+  '간호사': 'Nurse',
+  '변호사': 'Lawyer',
+  '경찰관': 'Police Officer',
+  '소방관': 'Firefighter',
+  '가수': 'Singer',
+  '배우': 'Actor / Actress',
+  '학생': 'Student',
+  '대학생': 'College Student',
+  '미용실': 'Hair Salon',
+  '대사관': 'Embassy',
+  '여행사': 'Travel Agency',
+  '빵집': 'Bakery',
+  '병원': 'Hospital',
+  '약국': 'Pharmacy',
+  '회사': 'Company / Office',
+  '학교': 'School',
+  '대학교': 'University / College',
+  '은행': 'Bank',
+  '우체국': 'Post Office',
+  '식당': 'Restaurant',
+  '카페': 'Café',
+  '시장': 'Traditional Market',
+  '마트': 'Supermarket / Mart',
+  '백화점': 'Department Store',
+  '기숙사': 'Dormitory',
+  '도서관': 'Library',
+  '집': 'Home / House',
+  '교실': 'Classroom',
+
+  // 2과 여가 생활 및 활동
+  '배드민턴': 'Badminton',
+  '자전거': 'Bicycle',
+  '등산': 'Hiking / Mountain Climbing',
+  '사진': 'Photo / Photography',
+  '풍경': 'Scenery / Landscape',
+  '악기': 'Musical Instrument',
+  '음식': 'Food',
+  '만화': 'Comic / Manga',
+  '소설': 'Novel',
+  '스포츠': 'Sports',
+  '스포츠 경기': 'Sports Match / Game',
+  '체육관': 'Gymnasium / Gym',
+  '집안일': 'Housework / Chores',
+  '스파게티': 'Spaghetti',
+  '박수': 'Applause / Clapping',
+  '영화': 'Movie / Film',
+  '음악': 'Music',
+  '여행': 'Travel / Trip',
+  '수영': 'Swimming',
+  '축구': 'Soccer',
+  '농구': 'Basketball',
+  '야구': 'Baseball',
+  '테니스': 'Tennis',
+  '탁구': 'Table Tennis',
+  '골프': 'Golf',
+  '산책': 'Walk / Stroll',
+  '조깅': 'Jogging',
+  '게임': 'Game',
+  '쇼핑': 'Shopping',
+  '요리': 'Cooking',
+  '노래': 'Song',
+  '춤': 'Dance',
+  '그림': 'Drawing / Painting',
+  '독서': 'Reading',
+  '컴퓨터': 'Computer',
+  '텔레비전': 'Television / TV',
+  '스마트폰': 'Smartphone',
+  '인터넷': 'Internet',
+
+  // 1A 기본 사물/일상 어휘
+  '한국': 'Korea',
+  '가방': 'Bag',
+  '책상': 'Desk',
+  '의자': 'Chair',
+  '책': 'Book',
+  '공책': 'Notebook',
+  '연필': 'Pencil',
+  '볼펜': 'Pen',
+  '지우개': 'Eraser',
+  '필통': 'Pencil Case',
+  '문': 'Door',
+  '창문': 'Window',
+  '시계': 'Clock / Watch',
+  '전화': 'Telephone / Phone',
+  '사과': 'Apple',
+  '빵': 'Bread',
+  '우유': 'Milk',
+  '주스': 'Juice',
+  '물': 'Water',
+  '옷': 'Clothes',
+  '모자': 'Hat / Cap',
+  '신발': 'Shoes',
+  '구두': 'Dress Shoes',
+  '운동화': 'Sneakers',
+  '안경': 'Glasses',
+  '우산': 'Umbrella',
+  '지갑': 'Wallet',
+  '휴지': 'Tissue',
+  '비누': 'Soap',
+  '비행기': 'Airplane',
+  '기차': 'Train',
+  '지하철': 'Subway / Metro',
+  '버스': 'Bus',
+  '택시': 'Taxi',
+  '자동차': 'Car / Automobile',
+  '아침': 'Morning / Breakfast',
+  '점심': 'Lunch',
+  '저녁': 'Evening / Dinner',
+  '밤': 'Night',
+  '주말': 'Weekend',
+  '시간': 'Time / Hour',
+  '날씨': 'Weather',
+  '가족': 'Family',
+  '아버지': 'Father',
+  '어머니': 'Mother',
+  '형': 'Older Brother',
+  '오빠': 'Older Brother',
+  '누나': 'Older Sister',
+  '언니': 'Older Sister',
+  '동생': 'Younger Sibling',
+  '친구': 'Friend',
+  '나무': 'Tree',
+  '꽃': 'Flower',
+  '바다': 'Sea / Ocean',
+  '산': 'Mountain',
+  '강': 'River',
+  '호수': 'Lake',
+  '개': 'Dog',
+  '고양이': 'Cat',
+  '새': 'Bird',
+  '사자': 'Lion',
+  '소': 'Cow',
+  '오리': 'Duck',
+  '물고기': 'Fish',
+  '바나나': 'Banana',
+  '오이': 'Cucumber',
+  '고기': 'Meat',
+  '라면': 'Ramen',
+  '불고기': 'Bulgogi',
+  '비빔밥': 'Bibimbap',
+  '김밥': 'Gimbap',
+  '커피': 'Coffee',
+  '차': 'Tea / Car',
+
+  // 주요 동사 (동사(V))
+  '치다': 'To play / hit',
+  '타다': 'To ride',
+  '찍다': 'To take (a photo)',
+  '연주하다': 'To play (an instrument)',
+  '만들다': 'To make / cook',
+  '그리다': 'To draw / paint',
+  '읽다': 'To read',
+  '보다': 'To watch / see',
+  '가다': 'To go',
+  '오다': 'To come',
+  '하다': 'To do',
+  '먹다': 'To eat',
+  '마시다': 'To drink',
+  '자다': 'To sleep',
+  '일어나다': 'To wake up',
+  '씻다': 'To wash',
+  '입다': 'To wear (clothes)',
+  '벗다': 'To take off (clothes)',
+  '쓰다': 'To write / wear (hat) / use',
+  '신다': 'To wear (shoes)',
+  '사다': 'To buy',
+  '팔다': 'To sell',
+  '주다': 'To give',
+  '받다': 'To receive',
+  '만나다': 'To meet',
+  '배우다': 'To learn',
+  '가르치다': 'To teach',
+  '공부하다': 'To study',
+  '일하다': 'To work',
+  '쉬다': 'To rest',
+  '운동하다': 'To exercise',
+  '산책하다': 'To take a walk',
+  '수영하다': 'To swim',
+  '등산하다': 'To hike',
+  '청소하다': 'To clean',
+  '빨래하다': 'To do laundry',
+  '요리하다': 'To cook',
+  '이야기하다': 'To talk / converse',
+  '말하다': 'To speak / tell',
+  '듣다': 'To listen',
+  '노래하다': 'To sing',
+  '춤추다': 'To dance',
+  '웃다': 'To laugh / smile',
+  '울다': 'To cry',
+  '출근하다': 'To go to work',
+  '퇴근하다': 'To leave work',
+  '도착하다': 'To arrive',
+  '출발하다': 'To depart',
+  '기다리다': 'To wait',
+  '자르다': 'To cut',
+  '치료하다': 'To treat / cure',
+  '통역하다': 'To interpret',
+  '안내하다': 'To guide',
+  '굽다': 'To bake / grill',
+  '보내다': 'To send',
+  '전화하다': 'To call',
+  '생각하다': 'To think',
+  '알다': 'To know',
+  '모르다': 'To not know',
+  '살다': 'To live',
+  '찾다': 'To look for / find',
+  '도와주다': 'To help',
+  '빌리다': 'To borrow',
+
+  // 주요 형용사 (형용사(A))
+  '크다': 'Big / Large',
+  '작다': 'Small',
+  '많다': 'Many / A lot',
+  '적다': 'Few / Little',
+  '좋다': 'Good / Nice',
+  '나쁘다': 'Bad',
+  '재미있다': 'Fun / Interesting',
+  '재미없다': 'Boring / Not fun',
+  '맛있다': 'Delicious / Tasty',
+  '맛없다': 'Not delicious',
+  '비싸다': 'Expensive',
+  '싸다': 'Cheap / Inexpensive',
+  '예쁘다': 'Pretty / Beautiful',
+  '멋있다': 'Cool / Stylish',
+  '바쁘다': 'Busy',
+  '한가하다': 'Free / Not busy',
+  '쉽다': 'Easy',
+  '어렵다': 'Difficult / Hard',
+  '덥다': 'Hot (weather)',
+  '춥다': 'Cold (weather)',
+  '따뜻하다': 'Warm',
+  '시원하다': 'Cool / Refreshing',
+  '맑다': 'Clear / Sunny',
+  '흐리다': 'Cloudy',
+  '가깝다': 'Close / Near',
+  '멀다': 'Far',
+  '조용하다': 'Quiet',
+  '시끄럽다': 'Noisy / Loud',
+  '깨끗하다': 'Clean',
+  '더럽다': 'Dirty',
+  '복잡하다': 'Crowded / Complicated',
+  '편하다': 'Comfortable',
+  '불편하다': 'Uncomfortable',
+  '친절하다': 'Kind / Friendly',
+  '행복하다': 'Happy',
+  '슬프다': 'Sad',
+  '아프다': 'Sick / Painful',
+  '피곤하다': 'Tired',
+  '길다': 'Long',
+  '짧다': 'Short',
+  '무겁다': 'Heavy',
+  '가볍다': 'Light',
+  '높다': 'High',
+  '낮다': 'Low',
+  '넓다': 'Wide / Spacious',
+  '좁다': 'Narrow',
+  '빠르다': 'Fast',
+  '느리다': 'Slow',
+  '착하다': 'Good-natured / Kind',
+  '똑똑하다': 'Smart / Clever',
+  '유명하다': 'Famous',
+  '심심하다': 'Bored',
+  '귀엽다': 'Cute',
+  '맵다': 'Spicy',
+  '달다': 'Sweet',
+  '짜다': 'Salty',
+  '싱겁다': 'Bland',
+};
+
+// 어휘의 영문 의미 조회 헬퍼
+export function getWordEnglishMeaning(word: string, fallback?: string): string {
+  if (!word) return '';
+  const clean = word.trim();
+  if (VOCAB_ENGLISH_DICTIONARY[clean]) return VOCAB_ENGLISH_DICTIONARY[clean];
+
+  const stripped = clean.replace(/[을를이가에에서은는]$/, '').trim();
+  if (VOCAB_ENGLISH_DICTIONARY[stripped]) return VOCAB_ENGLISH_DICTIONARY[stripped];
+
+  if (fallback && /[a-zA-Z]/.test(fallback)) {
+    return fallback.trim();
+  }
+
+  // Verb with 하다 (e.g. 공부하다 -> To study)
+  if (clean.endsWith('하다')) {
+    const base = clean.slice(0, -2);
+    if (VOCAB_ENGLISH_DICTIONARY[base]) {
+      return `To ${VOCAB_ENGLISH_DICTIONARY[base].toLowerCase()}`;
+    }
+  }
+
+  // Look in SEJONG_PRESET_UNITS for any existing word item
+  for (const u of SEJONG_PRESET_UNITS) {
+    const found = u.words.find((w) => w.word === clean || w.word === stripped);
+    if (found?.englishMeaning && /[a-zA-Z]/.test(found.englishMeaning)) {
+      return found.englishMeaning;
+    }
+  }
+
+  return fallback && /[a-zA-Z]/.test(fallback) ? fallback : '';
+}
+
+// 초급 학습자를 위한 품사 표기 정규화 헬퍼 (명사(N), 동사(V), 형용사(A), 구(Phrase))
 export function formatPartOfSpeech(pos?: string): string {
   if (!pos) return '명사(N)';
   const trimmed = pos.trim();
+  if (trimmed === '구' || trimmed === '구(Phrase)' || trimmed.startsWith('구') || trimmed.startsWith('연어')) {
+    return '구(Phrase)';
+  }
   if (trimmed === '명사' || trimmed === '명사(N)') return '명사(N)';
   if (trimmed === '동사' || trimmed === '동사(V)') return '동사(V)';
   if (trimmed === '형용사' || trimmed === '형용사(A)') return '형용사(A)';
@@ -417,14 +746,20 @@ export function createWordItem(
 ): WordItem {
   const { promptPhrase, targetWord, fullPhrase } = parseWordToken(rawInput);
 
-  // 품사 자동 감지: 목표어가 '~다'로 끝나거나 연어 문제인 경우 동사(V)로 기본 설정
+  // 품사 자동 감지: 연어 문제인 경우 '구(Phrase)', 형용사 목록이면 '형용사(A)', '~다'로 끝나면 '동사(V)', 그 외 '명사(N)'
   let pos = extra?.partOfSpeech;
   if (!pos) {
-    if (targetWord.endsWith('다') || promptPhrase) {
+    if (promptPhrase) {
+      pos = '구(Phrase)';
+    } else if (SEJONG_ADJECTIVES.has(targetWord)) {
+      pos = '형용사(A)';
+    } else if (targetWord.endsWith('다')) {
       pos = '동사(V)';
     } else {
       pos = '명사(N)';
     }
+  } else if (promptPhrase) {
+    pos = '구(Phrase)';
   }
 
   const imageKey = fullPhrase || rawInput;
@@ -442,7 +777,11 @@ export function createWordItem(
       : `${category} 관련 세종한국어 핵심 어휘`);
 
   const displayMeaning = meaning || (fullPhrase ? `${fullPhrase} 어휘 학습` : `${targetWord} 어휘 학습`);
-  const displayEnglish = extra?.englishMeaning || (fullPhrase ? fullPhrase : displayMeaning.split('·')[0].trim());
+  const displayEnglish = promptPhrase
+    ? undefined
+    : (extra?.englishMeaning && /[a-zA-Z]/.test(extra.englishMeaning)
+        ? extra.englishMeaning
+        : getWordEnglishMeaning(targetWord));
 
   return {
     id: `w-${rawInput.replace(/[:：\s]/g, '-')}`,

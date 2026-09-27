@@ -6,6 +6,8 @@ import {
   SEJONG_PRESET_UNITS,
   createWordItem,
   parseWordToken,
+  getWordEnglishMeaning,
+  SEJONG_ADJECTIVES,
   getCandidateImagesForWord,
   getWordDisplayImage,
   getCustomVocabImages,
@@ -374,14 +376,18 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     }
 
     const { promptPhrase, targetWord } = parseWordToken(tokenToAdd);
+    const autoPos = promptPhrase
+      ? '구(Phrase)'
+      : (SEJONG_ADJECTIVES.has(targetWord) ? '형용사(A)' : (targetWord.endsWith('다') ? '동사(V)' : '명사(N)'));
+    const english = promptPhrase ? undefined : getWordEnglishMeaning(targetWord);
     const newWordItem = createWordItem(
       tokenToAdd,
       promptPhrase ? `${promptPhrase} ${targetWord} 어휘 학습` : `${targetWord} 어휘 학습`,
       '일반',
       undefined,
       {
-        partOfSpeech: promptPhrase ? '동사(V)' : (targetWord.endsWith('다') ? '동사(V)' : '명사(N)'),
-        englishMeaning: targetWord,
+        partOfSpeech: autoPos,
+        englishMeaning: english,
         imageUrl: getWordDisplayImage(tokenToAdd),
       }
     );
@@ -421,17 +427,26 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
 
     const newWordItems: WordItem[] = parsedWords.map((token) => {
       const { promptPhrase, targetWord } = parseWordToken(token);
+      const autoPos = promptPhrase
+        ? '구(Phrase)'
+        : (SEJONG_ADJECTIVES.has(targetWord) ? '형용사(A)' : (targetWord.endsWith('다') ? '동사(V)' : '명사(N)'));
+      const english = promptPhrase ? undefined : getWordEnglishMeaning(targetWord);
       const existing = currentEditingUnit.words.find(
         (w) => w.word === targetWord && (w.promptPhrase || '') === (promptPhrase || '')
       );
-      return (
-        existing ||
-        createWordItem(token, `${promptPhrase ? `${promptPhrase} ` : ''}${targetWord} 어휘 학습`, '일반', undefined, {
-          partOfSpeech: promptPhrase ? '동사(V)' : (targetWord.endsWith('다') ? '동사(V)' : '명사(N)'),
-          englishMeaning: targetWord,
-          imageUrl: getWordDisplayImage(token),
-        })
-      );
+      if (existing) {
+        return {
+          ...existing,
+          promptPhrase,
+          partOfSpeech: promptPhrase ? '구(Phrase)' : (existing.partOfSpeech || autoPos),
+          englishMeaning: promptPhrase ? undefined : (existing.englishMeaning && /[a-zA-Z]/.test(existing.englishMeaning) ? existing.englishMeaning : english),
+        };
+      }
+      return createWordItem(token, `${promptPhrase ? `${promptPhrase} ` : ''}${targetWord} 어휘 학습`, '일반', undefined, {
+        partOfSpeech: autoPos,
+        englishMeaning: english,
+        imageUrl: getWordDisplayImage(token),
+      });
     });
 
     onUpdateUnitWords(currentEditingUnit.id, newWordItems);
@@ -466,9 +481,13 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     const newUnitId = `custom-unit-${Date.now()}`;
     const wordItems: WordItem[] = parsedWords.map((token) => {
       const { promptPhrase, targetWord } = parseWordToken(token);
+      const autoPos = promptPhrase
+        ? '구(Phrase)'
+        : (SEJONG_ADJECTIVES.has(targetWord) ? '형용사(A)' : (targetWord.endsWith('다') ? '동사(V)' : '명사(N)'));
+      const english = promptPhrase ? undefined : getWordEnglishMeaning(targetWord);
       return createWordItem(token, `${promptPhrase ? `${promptPhrase} ` : ''}${targetWord} 어휘 학습`, '학습어휘', undefined, {
-        partOfSpeech: promptPhrase ? '동사(V)' : (targetWord.endsWith('다') ? '동사(V)' : '명사(N)'),
-        englishMeaning: targetWord,
+        partOfSpeech: autoPos,
+        englishMeaning: english,
         imageUrl: getWordDisplayImage(token),
       });
     });
@@ -527,11 +546,15 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
         const existing = currentEditingUnit.words.find(
           (w) => w.word === targetWord && (w.promptPhrase || '') === (promptPhrase || '')
         );
+        const autoPos = promptPhrase
+          ? '구(Phrase)'
+          : (SEJONG_ADJECTIVES.has(targetWord) ? '형용사(A)' : (targetWord.endsWith('다') ? '동사(V)' : '명사(N)'));
+        const english = promptPhrase ? undefined : getWordEnglishMeaning(targetWord);
         const item =
           existing ||
           createWordItem(token, `${promptPhrase ? `${promptPhrase} ` : ''}${targetWord} 어휘 학습`, '일반', undefined, {
-            partOfSpeech: promptPhrase ? '동사(V)' : (targetWord.endsWith('다') ? '동사(V)' : '명사(N)'),
-            englishMeaning: targetWord,
+            partOfSpeech: autoPos,
+            englishMeaning: english,
           });
         if (token === editingWord || targetWord === editingWord) {
           return { ...item, imageUrl: selectedImageUrl };
@@ -566,11 +589,15 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
         const existing = currentEditingUnit.words.find(
           (w) => w.word === targetWord && (w.promptPhrase || '') === (promptPhrase || '')
         );
+        const autoPos = promptPhrase
+          ? '구(Phrase)'
+          : (SEJONG_ADJECTIVES.has(targetWord) ? '형용사(A)' : (targetWord.endsWith('다') ? '동사(V)' : '명사(N)'));
+        const english = promptPhrase ? undefined : getWordEnglishMeaning(targetWord);
         const item =
           existing ||
           createWordItem(token, `${promptPhrase ? `${promptPhrase} ` : ''}${targetWord} 어휘 학습`, '일반', undefined, {
-            partOfSpeech: promptPhrase ? '동사(V)' : (targetWord.endsWith('다') ? '동사(V)' : '명사(N)'),
-            englishMeaning: targetWord,
+            partOfSpeech: autoPos,
+            englishMeaning: english,
           });
         if (token === editingWord || targetWord === editingWord) {
           return { ...item, imageUrl: defaultUrl };
@@ -1413,17 +1440,34 @@ function setupClassSheets() {
                                   <div className="min-w-0 flex-1 truncate" title={rawToken}>
                                     {promptPhrase ? (
                                       <>
-                                        <span className="text-[10px] text-sky-600 font-semibold block leading-tight truncate">
-                                          {promptPhrase}
-                                        </span>
+                                        <div className="flex items-center gap-1 mb-0.5">
+                                          <span className="text-[9px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded font-bold">
+                                            구(Phrase)
+                                          </span>
+                                          <span className="text-[10px] text-sky-600 font-semibold block leading-tight truncate">
+                                            {promptPhrase}
+                                          </span>
+                                        </div>
                                         <span className="font-bold text-xs text-[#0c2340] leading-tight block truncate">
                                           ({targetWord})
                                         </span>
                                       </>
                                     ) : (
-                                      <span className="font-bold text-xs text-[#0c2340] truncate block">
-                                        {targetWord}
-                                      </span>
+                                      <div>
+                                        <div className="flex items-center gap-1">
+                                          <span className="font-bold text-xs text-[#0c2340] truncate block">
+                                            {targetWord}
+                                          </span>
+                                          <span className="text-[9px] px-1 py-0.5 bg-sky-100 text-sky-700 rounded font-semibold">
+                                            {SEJONG_ADJECTIVES.has(targetWord) ? '형용사' : (targetWord.endsWith('다') ? '동사' : '명사')}
+                                          </span>
+                                        </div>
+                                        {getWordEnglishMeaning(targetWord) && (
+                                          <span className="text-[10px] text-slate-400 block truncate">
+                                            {getWordEnglishMeaning(targetWord)}
+                                          </span>
+                                        )}
+                                      </div>
                                     )}
                                   </div>
                                   {/* 개별 단어 삭제 버튼 */}
@@ -1613,17 +1657,34 @@ function setupClassSheets() {
                                 <div className="min-w-0 flex-1 truncate" title={rawToken}>
                                   {promptPhrase ? (
                                     <>
-                                      <span className="text-[10px] text-sky-600 font-semibold block leading-tight truncate">
-                                        {promptPhrase}
-                                      </span>
+                                      <div className="flex items-center gap-1 mb-0.5">
+                                        <span className="text-[9px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded font-bold">
+                                          구(Phrase)
+                                        </span>
+                                        <span className="text-[10px] text-sky-600 font-semibold block leading-tight truncate">
+                                          {promptPhrase}
+                                        </span>
+                                      </div>
                                       <span className="font-bold text-xs text-[#0c2340] leading-tight block truncate">
                                         ({targetWord})
                                       </span>
                                     </>
                                   ) : (
-                                    <span className="font-bold text-xs text-[#0c2340] truncate block">
-                                      {targetWord}
-                                    </span>
+                                    <div>
+                                      <div className="flex items-center gap-1">
+                                        <span className="font-bold text-xs text-[#0c2340] truncate block">
+                                          {targetWord}
+                                        </span>
+                                        <span className="text-[9px] px-1 py-0.5 bg-sky-100 text-sky-700 rounded font-semibold">
+                                          {SEJONG_ADJECTIVES.has(targetWord) ? '형용사' : (targetWord.endsWith('다') ? '동사' : '명사')}
+                                        </span>
+                                      </div>
+                                      {getWordEnglishMeaning(targetWord) && (
+                                        <span className="text-[10px] text-slate-400 block truncate">
+                                          {getWordEnglishMeaning(targetWord)}
+                                        </span>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
                                 <button
