@@ -229,7 +229,14 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
 
   const displayImageUrl = getWordDisplayImage(currentWordItem.word, currentWordItem.imageUrl);
   const displayPartOfSpeech = formatPartOfSpeech(currentWordItem.partOfSpeech);
-  const displayEnglishMeaning = currentWordItem.englishMeaning || currentWordItem.meaning.split('·')[0].trim();
+  const isCollocation = Boolean(currentWordItem.promptPhrase);
+  const rawMeaning = currentWordItem.englishMeaning || currentWordItem.meaning.split('·')[0].trim();
+  // 연어 문제이거나, 의미 텍스트가 정답 단어를 스포일러하는 경우 Meaning 숨김
+  const shouldShowMeaning =
+    !isCollocation &&
+    Boolean(rawMeaning) &&
+    rawMeaning.toLowerCase() !== targetWord.toLowerCase() &&
+    !rawMeaning.includes(targetWord);
 
   return (
     <div className="w-full max-w-[720px] mx-auto px-4 sm:px-6 py-6 sm:py-8 select-none">
@@ -293,10 +300,12 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
               </span>
 
               <div className="flex items-center gap-2">
-                <span className="text-[16px] sm:text-[17px] font-black text-[#0c2340] tracking-tight">
-                  Meaning: <span className="text-[#0284c7]">{displayEnglishMeaning}</span>
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-[#f1f5f9] text-[#475569] text-xs font-extrabold border border-[#e2e8f0]">
+                {shouldShowMeaning && (
+                  <span className="text-[16px] sm:text-[17px] font-black text-[#0c2340] tracking-tight">
+                    Meaning: <span className="text-[#0284c7]">{rawMeaning}</span>
+                  </span>
+                )}
+                <span className="px-2.5 py-1 rounded-full bg-[#f1f5f9] text-[#475569] text-xs font-extrabold border border-[#e2e8f0]">
                   {targetWord.length} {targetWord.length === 1 ? 'Letter' : 'Letters'}
                 </span>
               </div>
@@ -306,7 +315,7 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
             <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-[#f8fafc] border border-[#e2e8f0] flex items-center justify-center group shadow-2xs">
               <img
                 src={displayImageUrl}
-                alt={displayEnglishMeaning}
+                alt={currentWordItem.promptPhrase ? `${currentWordItem.promptPhrase} 힌트 이미지` : '어휘 힌트 이미지'}
                 className="w-full h-full object-cover select-none transition-transform duration-500 group-hover:scale-105"
                 loading="eager"
               />
