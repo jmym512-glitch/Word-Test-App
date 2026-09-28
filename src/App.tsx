@@ -7,6 +7,7 @@ import {
   TestSubmission,
   WordItem,
   CourseCategory,
+  resolveExamCourseClass,
 } from './types';
 import {
   INITIAL_UNITS,
@@ -209,7 +210,16 @@ export default function App() {
   const [submissions, setSubmissions] = useState<TestSubmission[]>(() => {
     try {
       const stored = localStorage.getItem('daejin_submissions');
-      return stored ? JSON.parse(stored) : [];
+      if (!stored) return [];
+      const parsed: TestSubmission[] = JSON.parse(stored);
+      return parsed.map((s) => {
+        const resolvedClass = resolveExamCourseClass({ title: s.unitTitle }, s.courseClass || s.gradeClass);
+        return {
+          ...s,
+          courseClass: resolvedClass,
+          gradeClass: resolvedClass,
+        };
+      });
     } catch {
       return [];
     }
@@ -368,7 +378,12 @@ export default function App() {
     const currentStudentId = currentStudent?.studentId || '20100042';
     const currentStudentName = currentStudent?.name || '최재민';
     const currentEnglishName = currentStudent?.englishName || 'Jaemin Choi';
-    const currentClass = currentStudent?.courseClass || currentStudent?.gradeClass || '1A 한국어';
+
+    // 학생의 등록 분반 대신, 실제 응시한 시험 단원의 분반 카테고리를 최우선으로 결정 (1A/1B/2A/2B 한국어)
+    const examCourseClass = resolveExamCourseClass(
+      activeUnit,
+      currentStudent?.courseClass || currentStudent?.gradeClass
+    );
 
     const newSubmission: TestSubmission = {
       id: `sub-${Date.now()}`,
@@ -377,7 +392,8 @@ export default function App() {
       studentId: currentStudentId,
       studentName: currentStudentName,
       englishName: currentEnglishName,
-      courseClass: currentClass,
+      courseClass: examCourseClass,
+      gradeClass: examCourseClass,
       institution: currentStudent?.institution || '대진대학교 국제교류원 한국어교육센터',
       score,
       correctCount,
@@ -392,6 +408,11 @@ export default function App() {
     };
 
     setSubmissions((prev) => [newSubmission, ...prev]);
+
+    // 응시한 시험에 따라 학생 프로필의 현재 분반 정보도 자동으로 동기화
+    if (currentStudent && currentStudent.courseClass !== examCourseClass) {
+      handleUpdateStudentCourseClass(examCourseClass);
+    }
 
     // Update unit status to completed with score
     setUnits((prev) =>
@@ -408,7 +429,7 @@ export default function App() {
       })
     );
 
-    // 구글 스프레드시트 실시간 성적 전송
+    // 구글 스프레드시트 실시간 성적 전송 (응시한 시험 분반 탭으로 자동 라우팅)
     const targetWebhookUrl = getEffectiveWebhookUrl(teacherSettings.webhookUrl);
     if (targetWebhookUrl && targetWebhookUrl.startsWith('http')) {
       try {
@@ -418,7 +439,8 @@ export default function App() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ...newSubmission,
-            gradeClass: newSubmission.courseClass,
+            courseClass: examCourseClass,
+            gradeClass: examCourseClass,
           }),
         }).catch((err) => {
           console.warn('Webhook transmission error:', err);

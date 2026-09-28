@@ -197,10 +197,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           password: matched.password,
           name: matched.name,
           email: matched.email,
-          courseClass: '1A 한국어',
-          institution: '대진대학교 국제교류원 한국어교육센터',
-          gradeClass: '1A 한국어',
-          school: '대진대학교 국제교류원 한국어교육센터',
+          englishName: matched.englishName,
+          courseClass: matched.courseClass || matched.gradeClass || '1A 한국어',
+          institution: matched.institution || '대진대학교 국제교류원 한국어교육센터',
+          nationality: matched.nationality,
+          gradeClass: matched.courseClass || matched.gradeClass || '1A 한국어',
+          school: matched.institution || '대진대학교 국제교류원 한국어교육센터',
         });
         setIsLoading(false);
         return;

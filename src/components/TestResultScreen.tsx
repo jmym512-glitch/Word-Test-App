@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { QuestionResult, LearnerProfile, ExamUnit } from '../types';
+import { QuestionResult, LearnerProfile, ExamUnit, resolveExamCourseClass } from '../types';
 
 interface TestResultScreenProps {
   student: LearnerProfile;
@@ -82,7 +82,7 @@ export const TestResultScreen: React.FC<TestResultScreenProps> = ({
             <span className="font-bold text-[#0c2340]">{student.name}</span>
             {student.englishName && <span className="text-[#64748b]">({student.englishName})</span>}
             <span>·</span>
-            <span className="text-[#0284c7] font-semibold">{student.courseClass || student.gradeClass}</span>
+            <span className="text-[#0284c7] font-semibold">{resolveExamCourseClass(unit, student.courseClass || student.gradeClass)}</span>
             <span>·</span>
             <span className="text-[#64748b]">학번 {student.studentId}</span>
           </div>

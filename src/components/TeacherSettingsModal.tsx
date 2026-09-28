@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ExamUnit, TeacherSettings, TestSubmission, WordItem, CourseCategory, LearnerProfile } from '../types';
+import { ExamUnit, TeacherSettings, TestSubmission, WordItem, CourseCategory, LearnerProfile, resolveExamCourseClass } from '../types';
 import { decomposeWord, formatDecompositionText } from '../lib/hangul';
 import {
   VOCAB_IMAGES,
@@ -734,8 +734,15 @@ function doPost(e) {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var data = JSON.parse(e.postData.contents);
     
-    // 학생의 수강 분반 탭 이름 (1A 한국어, 1B 한국어, 2A 한국어, 2B 한국어 등)
+    // 응시한 시험의 분반 탭 이름 (1A 한국어, 1B 한국어, 2A 한국어, 2B 한국어 등)
     var courseClass = data.courseClass || data.gradeClass || '1A 한국어';
+    if (data.unitTitle) {
+      var ut = (data.unitTitle + "").toUpperCase();
+      if (ut.indexOf('2B') !== -1 || ut.indexOf('2-B') !== -1) courseClass = '2B 한국어';
+      else if (ut.indexOf('2A') !== -1 || ut.indexOf('2-A') !== -1) courseClass = '2A 한국어';
+      else if (ut.indexOf('1B') !== -1 || ut.indexOf('1-B') !== -1) courseClass = '1B 한국어';
+      else if (ut.indexOf('1A') !== -1 || ut.indexOf('1-A') !== -1) courseClass = '1A 한국어';
+    }
     
     // 11개 핵심 수집 컬럼 데이터 구성
     var rowData = [
@@ -910,7 +917,8 @@ function setupClassSheets() {
     }
     setTestStatus(`[${sub.studentName} (${sub.studentId})] 성적 데이터를 구글 시트로 전송 중...`);
 
-    const courseClass = sub.courseClass || sub.gradeClass || '1A 한국어';
+    const matchedUnit = units.find((u) => u.id === sub.unitId || u.title === sub.unitTitle);
+    const courseClass = resolveExamCourseClass(matchedUnit || { title: sub.unitTitle }, sub.courseClass || sub.gradeClass);
     const payload = {
       timestamp: sub.timestamp,
       studentId: sub.studentId,
@@ -958,7 +966,8 @@ function setupClassSheets() {
     setTestStatus(`총 ${submissions.length}건의 성적을 구글 시트로 일괄 전송 중...`);
 
     for (const sub of submissions) {
-      const courseClass = sub.courseClass || sub.gradeClass || '1A 한국어';
+      const matchedUnit = units.find((u) => u.id === sub.unitId || u.title === sub.unitTitle);
+      const courseClass = resolveExamCourseClass(matchedUnit || { title: sub.unitTitle }, sub.courseClass || sub.gradeClass);
       const payload = {
         timestamp: sub.timestamp,
         studentId: sub.studentId,
@@ -1010,19 +1019,23 @@ function setupClassSheets() {
       '오답 단어 목록',
       '제출 고유ID',
     ];
-    const rows = submissions.map((s) => [
-      `"${s.timestamp}"`,
-      `"${s.courseClass || s.gradeClass || ''}"`,
-      `"${s.studentId}"`,
-      `"${s.studentName}"`,
-      `"${s.englishName || ''}"`,
-      `"${s.unitTitle}"`,
-      s.score,
-      `"${s.correctCount} / ${s.totalCount}"`,
-      `"${s.timeSpentSeconds}초"`,
-      `"${s.wrongWords || '없음 (만점)'}"`,
-      `"${s.txId}"`,
-    ]);
+    const rows = submissions.map((s) => {
+      const targetUnit = units.find((u) => u.id === s.unitId || u.title === s.unitTitle);
+      const rowCourseClass = resolveExamCourseClass(targetUnit || { title: s.unitTitle }, s.courseClass || s.gradeClass);
+      return [
+        `"${s.timestamp}"`,
+        `"${rowCourseClass}"`,
+        `"${s.studentId}"`,
+        `"${s.studentName}"`,
+        `"${s.englishName || ''}"`,
+        `"${s.unitTitle}"`,
+        s.score,
+        `"${s.correctCount} / ${s.totalCount}"`,
+        `"${s.timeSpentSeconds}초"`,
+        `"${s.wrongWords || '없음 (만점)'}"`,
+        `"${s.txId}"`,
+      ];
+    });
     const csvContent =
       'data:text/csv;charset=utf-8,\uFEFF' +
       [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
@@ -1941,7 +1954,12 @@ function setupClassSheets() {
                               <div className="text-[10px] text-[#64748b] font-normal">{sub.englishName}</div>
                             )}
                           </td>
-                          <td className="p-2.5 text-[#64748b]">{sub.courseClass || sub.gradeClass}</td>
+                          <td className="p-2.5 text-[#64748b]">
+                            {resolveExamCourseClass(
+                              units.find((u) => u.id === sub.unitId || u.title === sub.unitTitle) || { title: sub.unitTitle },
+                              sub.courseClass || sub.gradeClass
+                            )}
+                          </td>
                           <td className="p-2.5">{sub.unitTitle}</td>
                           <td className="p-2.5 font-bold text-[#15803d]">{sub.score}점</td>
                           <td className="p-2.5">
