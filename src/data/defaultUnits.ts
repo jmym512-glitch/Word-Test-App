@@ -147,9 +147,40 @@ export const VOCAB_IMAGES: Record<string, string> = {
   '한국어를 가르치다': 'https://images.unsplash.com/photo-1577896851231-70ef18881754?w=600&auto=format&fit=crop&q=80',
   '가르치다': 'https://images.unsplash.com/photo-1577896851231-70ef18881754?w=600&auto=format&fit=crop&q=80',
   '환자를 치료하다': 'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?w=600&auto=format&fit=crop&q=80',
-  '치료하다': 'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?w=600&auto=format&fit=crop&q=80',
   '대학생': 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=600&auto=format&fit=crop&q=80',
   '유학생': 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=600&auto=format&fit=crop&q=80',
+
+  // 세종한국어 2A 3과 음식과 맛 (음식 문화) 어휘 이미지
+  '불고기': 'https://images.unsplash.com/photo-1590301157890-4810ed352733?w=600&auto=format&fit=crop&q=80',
+  '비빔밥': 'https://images.unsplash.com/photo-1553163147-622ab57be1c7?w=600&auto=format&fit=crop&q=80',
+  '삼계탕': 'https://images.unsplash.com/photo-1547928576-a4a33237cbc3?w=600&auto=format&fit=crop&q=80',
+  '설렁탕': 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=600&auto=format&fit=crop&q=80',
+  '갈비': 'https://images.unsplash.com/photo-1544025162-d76694265947?w=600&auto=format&fit=crop&q=80',
+  '김치찌개': 'https://images.unsplash.com/photo-1547928576-a4a33237cbc3?w=600&auto=format&fit=crop&q=80',
+  '된장찌개': 'https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?w=600&auto=format&fit=crop&q=80',
+  '냉면': 'https://images.unsplash.com/photo-1552611052-33e04de081de?w=600&auto=format&fit=crop&q=80',
+  '김밥': 'https://images.unsplash.com/photo-1563245372-f21724e3856d?w=600&auto=format&fit=crop&q=80',
+  '라면': 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=600&auto=format&fit=crop&q=80',
+  '떡볶이': 'https://images.unsplash.com/photo-1588252303782-cb80119abd6d?w=600&auto=format&fit=crop&q=80',
+  '만두': 'https://images.unsplash.com/photo-1496116218417-1a781b1c416c?w=600&auto=format&fit=crop&q=80',
+  '맛있다': 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=600&auto=format&fit=crop&q=80',
+  '맛없다': 'https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?w=600&auto=format&fit=crop&q=80',
+  '맵다': 'https://images.unsplash.com/photo-1588252303782-cb80119abd6d?w=600&auto=format&fit=crop&q=80',
+  '달다': 'https://images.unsplash.com/photo-1587314168485-3236d6710814?w=600&auto=format&fit=crop&q=80',
+  '짜다': 'https://images.unsplash.com/photo-1518110925495-5fe2fda0442c?w=600&auto=format&fit=crop&q=80',
+  '싱겁다': 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=600&auto=format&fit=crop&q=80',
+  '시다': 'https://images.unsplash.com/photo-1533089860892-a7c6f0a88666?w=600&auto=format&fit=crop&q=80',
+  '쓰다': 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=600&auto=format&fit=crop&q=80',
+  '뜨겁다': 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=600&auto=format&fit=crop&q=80',
+  '주문하다': 'https://images.unsplash.com/photo-1556740738-b6a63e27c4df?w=600&auto=format&fit=crop&q=80',
+  '시키다': 'https://images.unsplash.com/photo-1556740738-b6a63e27c4df?w=600&auto=format&fit=crop&q=80',
+  '반찬': 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&auto=format&fit=crop&q=80',
+  '메뉴판': 'https://images.unsplash.com/photo-1550966871-3ed3cdb5ed0c?w=600&auto=format&fit=crop&q=80',
+  '차림표': 'https://images.unsplash.com/photo-1550966871-3ed3cdb5ed0c?w=600&auto=format&fit=crop&q=80',
+  '종업원': 'https://images.unsplash.com/photo-1581579438747-1dc8d17bbce4?w=600&auto=format&fit=crop&q=80',
+  '손님': 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=600&auto=format&fit=crop&q=80',
+  '숟가락': 'https://images.unsplash.com/photo-1584269600464-37b1b58a9fe7?w=600&auto=format&fit=crop&q=80',
+  '젓가락': 'https://images.unsplash.com/photo-1615485290382-441e4d049cb5?w=600&auto=format&fit=crop&q=80',
 };
 
 export const DAEJIN_DATA_VERSION = 'v20260927_1';
@@ -386,7 +417,8 @@ export const SEJONG_ADJECTIVES = new Set([
   '따뜻하다', '시원하다', '맑다', '흐리다', '가깝다', '멀다', '조용하다', '시끄럽다', '깨끗하다',
   '더럽다', '복잡하다', '편하다', '불편하다', '친절하다', '행복하다', '슬프다', '아프다', '피곤하다',
   '길다', '짧다', '무겁다', '가볍다', '높다', '낮다', '넓다', '좁다', '빠르다', '느리다',
-  '착하다', '똑똑하다', '유명하다', '심심하다', '귀엽다', '맵다', '달다', '짜다', '싱겁다', '쓰다'
+  '착하다', '똑똑하다', '유명하다', '심심하다', '귀엽다', '맵다', '달다', '짜다', '싱겁다', '쓰다',
+  '시다', '뜨겁다'
 ]);
 
 // 세종한국어 1A~2B 및 일상 어휘 영문 딕셔너리
@@ -544,7 +576,22 @@ export const VOCAB_ENGLISH_DICTIONARY: Record<string, string> = {
   '라면': 'Ramen',
   '불고기': 'Bulgogi',
   '비빔밥': 'Bibimbap',
+  '삼계탕': 'Ginseng Chicken Soup',
+  '설렁탕': 'Ox Bone Soup',
+  '갈비': 'Galbi / Grilled Ribs',
+  '김치찌개': 'Kimchi Stew',
+  '된장찌개': 'Soybean Paste Stew',
+  '냉면': 'Cold Noodles',
   '김밥': 'Gimbap',
+  '떡볶이': 'Spicy Rice Cakes',
+  '만두': 'Dumplings',
+  '반찬': 'Side Dishes',
+  '메뉴판': 'Menu',
+  '차림표': 'Menu',
+  '종업원': 'Server / Waiter',
+  '손님': 'Customer / Guest',
+  '숟가락': 'Spoon',
+  '젓가락': 'Chopsticks',
   '커피': 'Coffee',
   '차': 'Tea / Car',
 
@@ -612,6 +659,8 @@ export const VOCAB_ENGLISH_DICTIONARY: Record<string, string> = {
   '찾다': 'To look for / find',
   '도와주다': 'To help',
   '빌리다': 'To borrow',
+  '주문하다': 'To order',
+  '시키다': 'To order',
 
   // 주요 형용사 (형용사(A))
   '크다': 'Big / Large',
@@ -671,6 +720,8 @@ export const VOCAB_ENGLISH_DICTIONARY: Record<string, string> = {
   '달다': 'Sweet',
   '짜다': 'Salty',
   '싱겁다': 'Bland',
+  '시다': 'Sour',
+  '뜨겁다': 'Hot (temperature / food)',
 };
 
 // 어휘의 영문 의미 조회 헬퍼
