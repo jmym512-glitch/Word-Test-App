@@ -181,6 +181,25 @@ export const VOCAB_IMAGES: Record<string, string> = {
   '손님': 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=600&auto=format&fit=crop&q=80',
   '숟가락': 'https://images.unsplash.com/photo-1584269600464-37b1b58a9fe7?w=600&auto=format&fit=crop&q=80',
   '젓가락': 'https://images.unsplash.com/photo-1615485290382-441e4d049cb5?w=600&auto=format&fit=crop&q=80',
+
+  // 세종한국어 1A 1과 자기소개 (나라 및 직업) 어휘 이미지
+  '중국': 'https://images.unsplash.com/photo-1508804185872-d7badad00f7d?w=600&auto=format&fit=crop&q=80',
+  '일본': 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=600&auto=format&fit=crop&q=80',
+  '미국': 'https://images.unsplash.com/photo-1485738422979-f5c462d49f74?w=600&auto=format&fit=crop&q=80',
+  '베트남': 'https://images.unsplash.com/photo-1528127269322-539801943592?w=600&auto=format&fit=crop&q=80',
+  '몽골': 'https://images.unsplash.com/photo-1563298723-dcfebaa392e3?w=600&auto=format&fit=crop&q=80',
+  '태국': 'https://images.unsplash.com/photo-1508009603885-50cf7c579365?w=600&auto=format&fit=crop&q=80',
+  '러시아': 'https://images.unsplash.com/photo-1513622470522-26c3c8a854bc?w=600&auto=format&fit=crop&q=80',
+  '사람': 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=600&auto=format&fit=crop&q=80',
+  '선생님': 'https://images.unsplash.com/photo-1577896851231-70ef18881754?w=600&auto=format&fit=crop&q=80',
+  '간호사': 'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?w=600&auto=format&fit=crop&q=80',
+  '경찰': 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=600&auto=format&fit=crop&q=80',
+  '경찰관': 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=600&auto=format&fit=crop&q=80',
+  '공무원': 'https://images.unsplash.com/photo-1497215728101-856f4ea42174?w=600&auto=format&fit=crop&q=80',
+  '은행원': 'https://images.unsplash.com/photo-1579621970563-ebec7560ff3e?w=600&auto=format&fit=crop&q=80',
+  '이름': 'https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=600&auto=format&fit=crop&q=80',
+  '직업': 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=600&auto=format&fit=crop&q=80',
+  '나라': 'https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?w=600&auto=format&fit=crop&q=80',
 };
 
 export const DAEJIN_DATA_VERSION = 'v20260927_1';
@@ -438,7 +457,10 @@ export const VOCAB_ENGLISH_DICTIONARY: Record<string, string> = {
   '의사': 'Doctor',
   '간호사': 'Nurse',
   '변호사': 'Lawyer',
+  '경찰': 'Police Officer',
   '경찰관': 'Police Officer',
+  '공무원': 'Civil Servant / Government Official',
+  '은행원': 'Bank Clerk / Teller',
   '소방관': 'Firefighter',
   '가수': 'Singer',
   '배우': 'Actor / Actress',
@@ -505,8 +527,19 @@ export const VOCAB_ENGLISH_DICTIONARY: Record<string, string> = {
   '스마트폰': 'Smartphone',
   '인터넷': 'Internet',
 
-  // 1A 기본 사물/일상 어휘
+  // 1A 기본 사물/일상 및 국가 어휘
   '한국': 'Korea',
+  '중국': 'China',
+  '일본': 'Japan',
+  '미국': 'USA / United States',
+  '베트남': 'Vietnam',
+  '몽골': 'Mongolia',
+  '태국': 'Thailand',
+  '러시아': 'Russia',
+  '사람': 'Person / People',
+  '나라': 'Country',
+  '이름': 'Name',
+  '직업': 'Job / Occupation',
   '가방': 'Bag',
   '책상': 'Desk',
   '의자': 'Chair',
