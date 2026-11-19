@@ -37,36 +37,94 @@ import {
 } from './lib/supabase';
 import { getEffectiveWebhookUrl } from './config';
 
-// 학생 기기 로컬 진행상태(점수, 완료 여부)와 클라우드 마스터 단원을 병합
+// 학생 기기 로컬 진행상태(점수, 완료 여부)와 클라우드 마스터 단원을 안전하게 병합
 function mergeCloudUnitsWithLocalProgress(cloudUnits: ExamUnit[], localUnits: ExamUnit[]): ExamUnit[] {
-  const localMap = new Map<string, { status?: string; score?: number; completedAt?: string }>();
+  const localMap = new Map<string, ExamUnit>();
   for (const lu of localUnits) {
-    if (lu.status === 'completed' || lu.score !== undefined) {
-      localMap.set(lu.id, { status: lu.status, score: lu.score, completedAt: lu.completedAt });
+    localMap.set(lu.id, lu);
+  }
+
+  const cloudMap = new Map<string, ExamUnit>();
+  for (const cu of cloudUnits) {
+    cloudMap.set(cu.id, cu);
+  }
+
+  const resultUnits: ExamUnit[] = [];
+  const processedIds = new Set<string>();
+
+  // 1. 공식 표준 프리셋 단원 (SEJONG_PRESET_UNITS) 우선 처리
+  // 클라우드에 기존 설정이 있으면 유지하되, 새로 추가되었거나 클라우드에 누락된 프리셋은 절대 삭제되지 않고 포함
+  for (const preset of SEJONG_PRESET_UNITS) {
+    const cloudUnit = cloudMap.get(preset.id);
+    const localUnit = localMap.get(preset.id);
+    const baseUnit = cloudUnit || localUnit || preset;
+
+    // 어휘 이미지 최신 매핑 유지
+    const refreshedWords = (baseUnit.words || preset.words).map((w) => ({
+      ...w,
+      imageUrl: VOCAB_IMAGES[w.word] || w.imageUrl || getWordDisplayImage(w.word),
+    }));
+
+    const resolvedQCount =
+      baseUnit.id !== 'sejong-unit-jamo' && refreshedWords.length >= 20 && (!baseUnit.questionCount || baseUnit.questionCount === 10)
+        ? 20
+        : baseUnit.questionCount || preset.questionCount;
+
+    const isPublished =
+      cloudUnit !== undefined
+        ? cloudUnit.isPublished
+        : localUnit?.isPublished !== undefined
+        ? localUnit.isPublished
+        : preset.isPublished;
+
+    resultUnits.push({
+      ...preset,
+      ...baseUnit,
+      words: refreshedWords,
+      questionCount: resolvedQCount,
+      isPublished: Boolean(isPublished),
+      status: (localUnit?.status as any) || cloudUnit?.status || preset.status || 'available',
+      score: localUnit?.score !== undefined ? localUnit.score : cloudUnit?.score,
+      completedAt: localUnit?.completedAt || cloudUnit?.completedAt,
+    });
+    processedIds.add(preset.id);
+  }
+
+  // 2. 클라우드에 저장된 나머지 단원들(선생님이 등록한 custom-unit-* 등) 추가
+  for (const cu of cloudUnits) {
+    if (!processedIds.has(cu.id)) {
+      const localUnit = localMap.get(cu.id);
+      const refreshedWords = (cu.words || []).map((w) => ({
+        ...w,
+        imageUrl: VOCAB_IMAGES[w.word] || w.imageUrl || getWordDisplayImage(w.word),
+      }));
+
+      const resolvedQCount =
+        refreshedWords.length >= 20 && (!cu.questionCount || cu.questionCount === 10)
+          ? 20
+          : cu.questionCount;
+
+      resultUnits.push({
+        ...cu,
+        words: refreshedWords,
+        questionCount: resolvedQCount,
+        status: (localUnit?.status as any) || cu.status || 'available',
+        score: localUnit?.score !== undefined ? localUnit.score : cu.score,
+        completedAt: localUnit?.completedAt || cu.completedAt,
+      });
+      processedIds.add(cu.id);
     }
   }
 
-  return cloudUnits.map((cu) => {
-    const local = localMap.get(cu.id);
-    const resolvedQCount =
-      cu.id !== 'sejong-unit-jamo' && cu.words && cu.words.length >= 20 && (!cu.questionCount || cu.questionCount === 10)
-        ? 20
-        : cu.questionCount;
-
-    if (local) {
-      return {
-        ...cu,
-        questionCount: resolvedQCount,
-        status: (local.status as any) || cu.status,
-        score: local.score !== undefined ? local.score : cu.score,
-        completedAt: local.completedAt || cu.completedAt,
-      };
+  // 3. 로컬에만 있고 클라우드에 아직 없는 커스텀 단원도 보존
+  for (const lu of localUnits) {
+    if (!processedIds.has(lu.id)) {
+      resultUnits.push(lu);
+      processedIds.add(lu.id);
     }
-    return {
-      ...cu,
-      questionCount: resolvedQCount,
-    };
-  });
+  }
+
+  return resultUnits;
 }
 
 // 클라우드 업로드 전 개인 시험 점수 등을 정제한 마스터 단원 생성
@@ -294,7 +352,13 @@ export default function App() {
         }
 
         if (cloudUnits && Array.isArray(cloudUnits) && cloudUnits.length > 0) {
-          setUnits((current) => mergeCloudUnitsWithLocalProgress(cloudUnits, current));
+          setUnits((current) => {
+            const merged = mergeCloudUnitsWithLocalProgress(cloudUnits, current);
+            if (merged.length > cloudUnits.length || !cloudUnits.some((u) => u.id === 'sejong-1a-unit-4-5')) {
+              saveCloudUnits(sanitizeMasterUnitsForCloud(merged));
+            }
+            return merged;
+          });
         } else {
           // 클라우드가 비어 있는 경우(최초 1회): 현재 브라우저의 단원 및 이미지를 Supabase로 자동 초기 업로드
           const localStored = localStorage.getItem('daejin_units');
@@ -341,7 +405,13 @@ export default function App() {
         setAllCustomVocabImages(cloudImages);
       }
       if (cloudUnits && Array.isArray(cloudUnits) && cloudUnits.length > 0) {
-        setUnits((current) => mergeCloudUnitsWithLocalProgress(cloudUnits, current));
+        setUnits((current) => {
+          const merged = mergeCloudUnitsWithLocalProgress(cloudUnits, current);
+          if (merged.length > cloudUnits.length || !cloudUnits.some((u) => u.id === 'sejong-1a-unit-4-5')) {
+            saveCloudUnits(sanitizeMasterUnitsForCloud(merged));
+          }
+          return merged;
+        });
       }
     } catch (e) {
       console.warn('Login cloud sync error:', e);
@@ -358,7 +428,7 @@ export default function App() {
     try {
       const cloudUnits = await fetchCloudUnits();
       if (cloudUnits && Array.isArray(cloudUnits) && cloudUnits.length > 0) {
-        setUnits(cloudUnits);
+        setUnits((current) => mergeCloudUnitsWithLocalProgress(cloudUnits, current));
       }
     } catch {}
     setCurrentTab('login');
