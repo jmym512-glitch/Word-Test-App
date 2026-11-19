@@ -128,7 +128,19 @@ export default function App() {
             const parsed: ExamUnit[] = JSON.parse(stored);
             parsed.forEach((u) => {
               if (u.id.startsWith('custom-unit-')) {
-                customUnits.push(u);
+                const refreshedWords = u.words.map((w) => ({
+                  ...w,
+                  imageUrl: VOCAB_IMAGES[w.word] || getWordDisplayImage(w.word) || w.imageUrl,
+                }));
+                const resolvedQCount =
+                  u.words.length >= 20 && (!u.questionCount || u.questionCount === 10)
+                    ? 20
+                    : u.questionCount;
+                customUnits.push({
+                  ...u,
+                  words: refreshedWords,
+                  questionCount: resolvedQCount,
+                });
               } else {
                 statusMap.set(u.id, {
                   status: u.status,
