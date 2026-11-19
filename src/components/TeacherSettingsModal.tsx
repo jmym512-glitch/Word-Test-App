@@ -127,6 +127,13 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     (currentEditingUnit?.category as CourseCategory) || '1A 한국어'
   );
   const [unitTotalMinutes, setUnitTotalMinutes] = useState<number>(currentEditingUnit?.totalTimeLimitMinutes || 10);
+  const [unitQuestionCount, setUnitQuestionCount] = useState<number>(() => {
+    if (!currentEditingUnit) return 20;
+    if (currentEditingUnit.words.length >= 20 && (!currentEditingUnit.questionCount || currentEditingUnit.questionCount === 10)) {
+      return 20;
+    }
+    return currentEditingUnit.questionCount || Math.min(20, currentEditingUnit.words.length || 20);
+  });
   const [quickWordInput, setQuickWordInput] = useState<string>('');
 
   // 모달 열림 또는 선택 단원 변경 시 편집 폼 자동 동기화
@@ -140,10 +147,15 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
       setUnitTitle(currentEditingUnit.title);
       setUnitCategory((currentEditingUnit.category as CourseCategory) || '1A 한국어');
       setUnitTotalMinutes(currentEditingUnit.totalTimeLimitMinutes || 10);
+      setUnitQuestionCount(
+        currentEditingUnit.words.length >= 20 && (!currentEditingUnit.questionCount || currentEditingUnit.questionCount === 10)
+          ? 20
+          : (currentEditingUnit.questionCount || Math.min(20, currentEditingUnit.words.length || 20))
+      );
     }
   }, [isOpen, selectedUnitId]);
 
-  // 새 시험 추가 폼 상태 (과정 대분류, 시험제목, 시험일, 시험 시간, 출제 단어)
+  // 새 시험 추가 폼 상태 (과정 대분류, 시험제목, 시험일, 시험 시간, 출제 문항 수, 출제 단어)
   const [newExamCategory, setNewExamCategory] = useState<CourseCategory>('1A 한국어');
   const [newExamTitle, setNewExamTitle] = useState<string>('');
   const [newExamDate, setNewExamDate] = useState<string>(() => {
@@ -154,6 +166,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     return `${yyyy}-${mm}-${dd}`;
   });
   const [newExamTotalMinutes, setNewExamTotalMinutes] = useState<number>(10);
+  const [newExamQuestionCount, setNewExamQuestionCount] = useState<number>(20);
   const [newExamWords, setNewExamWords] = useState<string>('');
 
   // 웹훅 상태 (기본값: 구글 Apps Script 연동 공식 웹 앱 주소)
@@ -465,6 +478,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
       title: unitTitle.trim() || currentEditingUnit.title,
       category: unitCategory,
       totalTimeLimitMinutes: Number(unitTotalMinutes) || 10,
+      questionCount: unitQuestionCount === 0 ? newWordItems.length : Math.min(unitQuestionCount, newWordItems.length),
     });
 
     setTestStatus(`[${unitTitle}] 단원 설정 및 ${newWordItems.length}개 어휘가 저장되었습니다!`);
@@ -501,6 +515,10 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
       });
     });
 
+    const qCount = newExamQuestionCount === 0
+      ? wordItems.length
+      : Math.min(newExamQuestionCount, wordItems.length);
+
     const createdUnit: ExamUnit = {
       id: newUnitId,
       unitNumber: units.length + 1,
@@ -509,7 +527,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
       subtitle: newExamDate ? `시험일: ${newExamDate}` : '교사 등록 완료',
       isPublished: true, // 새로 등록한 시험은 기본적으로 학생에게 게시
       status: 'available',
-      questionCount: Math.min(10, wordItems.length),
+      questionCount: qCount,
       timePerQuestionSeconds: 45,
       totalTimeLimitMinutes: Number(newExamTotalMinutes) || 10,
       wordsSummary: `${wordItems.slice(0, 3).map((w) => (w.promptPhrase ? `${w.promptPhrase} ${w.word}` : w.word)).join(', ')} 등 ${wordItems.length}개`,
@@ -1306,9 +1324,16 @@ function setupClassSheets() {
 
                       {/* Actions */}
                       <div className="flex items-center justify-between pt-2 border-t border-[#e2e8f0] text-xs">
-                        <span className="text-[11px] text-[#64748b]">
-                          출제 {Math.min(10, unit.words.length)}문항 (단어 풀: {unit.words.length}개) · 총 {unit.totalTimeLimitMinutes || 10}분
-                        </span>
+                        {(() => {
+                          const effectiveQCount = (unit.id !== 'sejong-unit-jamo' && unit.words.length >= 20 && (!unit.questionCount || unit.questionCount === 10))
+                            ? 20
+                            : (unit.questionCount && unit.questionCount > 0 ? Math.min(unit.questionCount, unit.words.length) : Math.min(20, unit.words.length));
+                          return (
+                            <span className="text-[11px] text-[#64748b]">
+                              출제 {effectiveQCount}문항 (단어 풀: {unit.words.length}개) · 총 {unit.totalTimeLimitMinutes || 10}분
+                            </span>
+                          );
+                        })()}
 
                         <div className="flex items-center gap-2">
                           <button
@@ -1359,7 +1384,7 @@ function setupClassSheets() {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     <div className="flex flex-col gap-1">
                       <label className="text-xs font-bold text-[#0c2340]">과정 대분류</label>
                       <select
@@ -1381,6 +1406,21 @@ function setupClassSheets() {
                         onChange={(e) => setUnitTitle(e.target.value)}
                         className="px-3 py-2 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7]"
                       />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-bold text-[#0c2340]">출제 문항 수</label>
+                      <select
+                        value={unitQuestionCount}
+                        onChange={(e) => setUnitQuestionCount(Number(e.target.value))}
+                        className="px-3 py-2 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7] font-semibold cursor-pointer"
+                      >
+                        <option value={20}>20문항 (권장)</option>
+                        <option value={0}>전체 출제 (등록 단어 전체)</option>
+                        <option value={25}>25문항</option>
+                        <option value={15}>15문항</option>
+                        <option value={10}>10문항</option>
+                        <option value={5}>5문항</option>
+                      </select>
                     </div>
                     <div className="flex flex-col gap-1">
                       <label className="text-xs font-bold text-[#0c2340]">총 시험 제한 시간 (5분~15분)</label>
@@ -1630,6 +1670,25 @@ function setupClassSheets() {
                           {m}분 (총 {m * 60}초)
                         </option>
                       ))}
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-bold text-[#0c2340] flex items-center gap-1">
+                      <span>출제 문항 수</span>
+                      <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={newExamQuestionCount}
+                      onChange={(e) => setNewExamQuestionCount(Number(e.target.value))}
+                      className="px-3.5 py-2.5 bg-[#f8fafc] border border-[#e2e8f0] rounded-xl text-xs text-[#0c2340] outline-none focus:border-[#0284c7] font-semibold cursor-pointer"
+                    >
+                      <option value={20}>20문항 (기본/권장)</option>
+                      <option value={0}>전체 출제 (입력한 단어 모두 시험)</option>
+                      <option value={25}>25문항</option>
+                      <option value={15}>15문항</option>
+                      <option value={10}>10문항</option>
+                      <option value={5}>5문항</option>
                     </select>
                   </div>
                 </div>

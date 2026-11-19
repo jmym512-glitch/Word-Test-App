@@ -14,16 +14,26 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
   onFinishTest,
   onExit,
 }) => {
-  // 컨닝 방지: 학생이 시험을 시작할 때마다 단어 순서를 무작위로 셔플하고, 최대 10문항만 추출
+  // 출제 문항 수 결정: 20단어 등록 시 20문항 전체 출제, 사용자 설정 questionCount 지원 (기본 최대 20문항 또는 전체 단어)
+  const effectiveQuestionCount = useMemo(() => {
+    if (unit.id !== 'sejong-unit-jamo' && unit.words.length >= 20 && (!unit.questionCount || unit.questionCount === 10)) {
+      return 20;
+    }
+    if (unit.questionCount && unit.questionCount > 0) {
+      return Math.min(unit.questionCount, unit.words.length);
+    }
+    return Math.min(20, unit.words.length);
+  }, [unit.id, unit.words.length, unit.questionCount]);
+
+  // 컨닝 방지: 학생이 시험을 시작할 때마다 단어 순서를 무작위로 셔플하고, 설정된 문항 수(최대 20문항) 출제
   const shuffledWords = useMemo<WordItem[]>(() => {
     const list = [...unit.words];
     for (let i = list.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [list[i], list[j]] = [list[j], list[i]];
     }
-    // 어휘 풀 중 최대 10문항만 무작위 추출하여 출제
-    return list.slice(0, Math.min(10, list.length));
-  }, [unit.id, unit.words]);
+    return list.slice(0, effectiveQuestionCount);
+  }, [unit.id, unit.words, effectiveQuestionCount]);
 
   const totalSectionSeconds = (unit.totalTimeLimitMinutes || 10) * 60;
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);

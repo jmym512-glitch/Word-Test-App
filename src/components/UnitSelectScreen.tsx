@@ -331,14 +331,21 @@ export const UnitSelectScreen: React.FC<UnitSelectScreenProps> = ({
                             )}
                             <span className="flex items-center gap-1">
                               <span className="material-symbols-outlined text-[15px] text-[#64748b]">format_list_numbered</span>
-                              <span>
-                                문항 수: <strong>{Math.min(10, unit.words.length)}문항</strong>
-                                {unit.words.length > 10 && (
-                                  <span className="text-[11px] text-[#0284c7] ml-1 font-semibold">
-                                    (총 {unit.words.length}개 중 무작위 10문제)
+                              {(() => {
+                                const effectiveQCount = (unit.id !== 'sejong-unit-jamo' && unit.words.length >= 20 && (!unit.questionCount || unit.questionCount === 10))
+                                  ? 20
+                                  : (unit.questionCount && unit.questionCount > 0 ? Math.min(unit.questionCount, unit.words.length) : Math.min(20, unit.words.length));
+                                return (
+                                  <span>
+                                    문항 수: <strong>{effectiveQCount}문항</strong>
+                                    {unit.words.length > effectiveQCount && (
+                                      <span className="text-[11px] text-[#0284c7] ml-1 font-semibold">
+                                        (총 {unit.words.length}개 중 무작위 {effectiveQCount}문제)
+                                      </span>
+                                    )}
                                   </span>
-                                )}
-                              </span>
+                                );
+                              })()}
                             </span>
                             <span className="flex items-center gap-1">
                               <span className="material-symbols-outlined text-[15px] text-[#64748b]">timer</span>

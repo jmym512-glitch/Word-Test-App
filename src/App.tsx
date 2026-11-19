@@ -48,15 +48,24 @@ function mergeCloudUnitsWithLocalProgress(cloudUnits: ExamUnit[], localUnits: Ex
 
   return cloudUnits.map((cu) => {
     const local = localMap.get(cu.id);
+    const resolvedQCount =
+      cu.id !== 'sejong-unit-jamo' && cu.words && cu.words.length >= 20 && (!cu.questionCount || cu.questionCount === 10)
+        ? 20
+        : cu.questionCount;
+
     if (local) {
       return {
         ...cu,
+        questionCount: resolvedQCount,
         status: (local.status as any) || cu.status,
         score: local.score !== undefined ? local.score : cu.score,
         completedAt: local.completedAt || cu.completedAt,
       };
     }
-    return cu;
+    return {
+      ...cu,
+      questionCount: resolvedQCount,
+    };
   });
 }
 
@@ -161,7 +170,12 @@ export default function App() {
 
       if (stored) {
         const parsed: ExamUnit[] = JSON.parse(stored);
-        return parsed;
+        return parsed.map((u) => {
+          if (u.id !== 'sejong-unit-jamo' && u.words && u.words.length >= 20 && (!u.questionCount || u.questionCount === 10)) {
+            return { ...u, questionCount: 20 };
+          }
+          return u;
+        });
       }
       return INITIAL_UNITS;
     } catch {
