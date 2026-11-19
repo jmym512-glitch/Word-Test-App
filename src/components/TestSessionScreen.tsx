@@ -14,26 +14,46 @@ export const TestSessionScreen: React.FC<TestSessionScreenProps> = ({
   onFinishTest,
   onExit,
 }) => {
-  // 출제 문항 수 결정: 20단어 등록 시 20문항 전체 출제, 사용자 설정 questionCount 지원 (기본 최대 20문항 또는 전체 단어)
+  // 출제 문항 수 결정: unit.questionCount가 지정되어 있으면 최우선 적용 (10문항, 20문항 등)
   const effectiveQuestionCount = useMemo(() => {
-    if (unit.id !== 'sejong-unit-jamo' && unit.words.length >= 20 && (!unit.questionCount || unit.questionCount === 10)) {
+    if (unit.questionCount && unit.questionCount > 0) {
+      return unit.questionCount;
+    }
+    if (unit.words.length >= 20) {
       return 20;
     }
-    if (unit.questionCount && unit.questionCount > 0) {
-      return Math.min(unit.questionCount, unit.words.length);
-    }
-    return Math.min(20, unit.words.length);
-  }, [unit.id, unit.words.length, unit.questionCount]);
+    return Math.max(10, unit.words.length);
+  }, [unit.words.length, unit.questionCount]);
 
-  // 컨닝 방지: 학생이 시험을 시작할 때마다 단어 순서를 무작위로 셔플하고, 설정된 문항 수(최대 20문항) 출제
+  // 컨닝 방지: 학생이 시험을 시작할 때마다 단어 순서를 무작위로 셔플하여 정확히 effectiveQuestionCount 문항 출제
   const shuffledWords = useMemo<WordItem[]>(() => {
+    if (!unit.words || unit.words.length === 0) return [];
+
+    // 1. 등록된 단어 목록 무작위 셔플
     const list = [...unit.words];
     for (let i = list.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [list[i], list[j]] = [list[j], list[i]];
     }
-    return list.slice(0, effectiveQuestionCount);
-  }, [unit.id, unit.words, effectiveQuestionCount]);
+
+    // 2. 단어 수가 목표 문항 수 이상이면 정확히 목표 문항 수만큼 슬라이스
+    if (list.length >= effectiveQuestionCount) {
+      return list.slice(0, effectiveQuestionCount);
+    }
+
+    // 3. 단어 풀(예: 10단어)이 설정된 출제 문항 수(20문항)보다 적은 경우,
+    // 학생들이 선택한 20문항을 끝까지 모두 풀 수 있도록 무작위 순서로 순환 보충하여 정확히 20문항 생성
+    const result: WordItem[] = [...list];
+    while (result.length < effectiveQuestionCount) {
+      const additional = [...unit.words];
+      for (let i = additional.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [additional[i], additional[j]] = [additional[j], additional[i]];
+      }
+      result.push(...additional);
+    }
+    return result.slice(0, effectiveQuestionCount);
+  }, [unit.words, effectiveQuestionCount]);
 
   const totalSectionSeconds = (unit.totalTimeLimitMinutes || 10) * 60;
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);

@@ -299,7 +299,7 @@ export const VOCAB_IMAGES: Record<string, string> = {
   '세종학당': 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=600&auto=format&fit=crop&q=80',
 };
 
-export const DAEJIN_DATA_VERSION = 'v20261119_4';
+export const DAEJIN_DATA_VERSION = 'v20261119_5';
 
 
 // 로컬 스토리지에 저장된 교사 생성/커스텀 어휘 이미지 조회

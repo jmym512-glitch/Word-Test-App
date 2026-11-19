@@ -50,6 +50,17 @@ interface TeacherSettingsModalProps {
   onAddUnit: (newUnit: ExamUnit) => void;
   onDeleteUnit: (unitId: string) => void;
   onUpdateUnitDetails: (unitId: string, details: Partial<ExamUnit>) => void;
+  onSaveUnitFull?: (
+    unitId: string,
+    updates: {
+      words?: WordItem[];
+      title?: string;
+      category?: CourseCategory;
+      totalTimeLimitMinutes?: number;
+      questionCount?: number;
+      isPublished?: boolean;
+    }
+  ) => void;
   onResetToPresets: () => void;
   teacherSettings: TeacherSettings;
   onSaveSettings: (settings: TeacherSettings) => void;
@@ -69,6 +80,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
   onAddUnit,
   onDeleteUnit,
   onUpdateUnitDetails,
+  onSaveUnitFull,
   onResetToPresets,
   teacherSettings,
   onSaveSettings,
@@ -473,15 +485,26 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
       });
     });
 
-    onUpdateUnitWords(currentEditingUnit.id, newWordItems);
-    onUpdateUnitDetails(currentEditingUnit.id, {
-      title: unitTitle.trim() || currentEditingUnit.title,
-      category: unitCategory,
-      totalTimeLimitMinutes: Number(unitTotalMinutes) || 10,
-      questionCount: unitQuestionCount === 0 ? newWordItems.length : Math.min(unitQuestionCount, newWordItems.length),
-    });
+    const finalQCount = unitQuestionCount === 0 ? newWordItems.length : unitQuestionCount;
+    if (onSaveUnitFull) {
+      onSaveUnitFull(currentEditingUnit.id, {
+        words: newWordItems,
+        title: unitTitle.trim() || currentEditingUnit.title,
+        category: unitCategory,
+        totalTimeLimitMinutes: Number(unitTotalMinutes) || 10,
+        questionCount: finalQCount,
+      });
+    } else {
+      onUpdateUnitWords(currentEditingUnit.id, newWordItems);
+      onUpdateUnitDetails(currentEditingUnit.id, {
+        title: unitTitle.trim() || currentEditingUnit.title,
+        category: unitCategory,
+        totalTimeLimitMinutes: Number(unitTotalMinutes) || 10,
+        questionCount: finalQCount,
+      });
+    }
 
-    setTestStatus(`[${unitTitle}] 단원 설정 및 ${newWordItems.length}개 어휘가 저장되었습니다!`);
+    setTestStatus(`[${unitTitle}] 단원 설정(출제 ${finalQCount}문항) 및 ${newWordItems.length}개 어휘가 저장되었습니다!`);
     setTimeout(() => setTestStatus(null), 3000);
   };
 
@@ -517,7 +540,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
 
     const qCount = newExamQuestionCount === 0
       ? wordItems.length
-      : Math.min(newExamQuestionCount, wordItems.length);
+      : newExamQuestionCount;
 
     const createdUnit: ExamUnit = {
       id: newUnitId,

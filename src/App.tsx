@@ -434,8 +434,12 @@ export default function App() {
     setCurrentTab('login');
   };
 
-  const handleSelectUnit = (unit: ExamUnit) => {
-    setActiveUnit(unit);
+  const handleSelectUnit = (unit: ExamUnit, customQCount?: number) => {
+    const resolvedQCount = customQCount || unit.questionCount || (unit.words.length >= 20 ? 20 : 10);
+    setActiveUnit({
+      ...unit,
+      questionCount: resolvedQCount,
+    });
     setCurrentTab('test');
   };
 
@@ -597,6 +601,40 @@ export default function App() {
   // 단원 세부정보(제목, 시간 등) 수정
   const handleUpdateUnitDetails = (unitId: string, details: Partial<ExamUnit>) => {
     const next = units.map((u) => (u.id === unitId ? { ...u, ...details } : u));
+    updateAndSaveUnits(next);
+  };
+
+  // 단원 어휘 및 설정 일괄 원자적 저장 (경쟁 상태 방지)
+  const handleSaveUnitFull = (
+    unitId: string,
+    updates: {
+      words?: WordItem[];
+      title?: string;
+      category?: CourseCategory;
+      totalTimeLimitMinutes?: number;
+      questionCount?: number;
+      isPublished?: boolean;
+    }
+  ) => {
+    const next = units.map((u) => {
+      if (u.id === unitId) {
+        const words = updates.words || u.words;
+        const qCount =
+          updates.questionCount !== undefined
+            ? updates.questionCount
+            : (words.length >= 20 ? 20 : u.questionCount);
+        return {
+          ...u,
+          ...updates,
+          words,
+          questionCount: qCount,
+          wordsSummary:
+            words.slice(0, 3).map((w) => (w.promptPhrase ? `${w.promptPhrase} ${w.word}` : w.word)).join(', ') +
+            (words.length > 3 ? ` 등 ${words.length}개` : ''),
+        };
+      }
+      return u;
+    });
     updateAndSaveUnits(next);
   };
 
@@ -798,6 +836,7 @@ export default function App() {
         onAddUnit={handleAddUnit}
         onDeleteUnit={handleDeleteUnit}
         onUpdateUnitDetails={handleUpdateUnitDetails}
+        onSaveUnitFull={handleSaveUnitFull}
         onResetToPresets={handleResetToPresets}
         teacherSettings={teacherSettings}
         onSaveSettings={setTeacherSettings}

@@ -4,7 +4,7 @@ import { ExamUnit, LearnerProfile, CourseCategory } from '../types';
 interface UnitSelectScreenProps {
   student: LearnerProfile;
   units: ExamUnit[];
-  onSelectUnit: (unit: ExamUnit) => void;
+  onSelectUnit: (unit: ExamUnit, customQCount?: number) => void;
   onLogout: () => void;
   onRefreshUnits?: () => Promise<boolean>;
 }
@@ -55,6 +55,13 @@ export const UnitSelectScreen: React.FC<UnitSelectScreenProps> = ({
   }, [filteredUnits, selectedUnitId]);
 
   const selectedUnit = filteredUnits.find((u) => u.id === selectedUnitId) || filteredUnits[0];
+
+  // 단원별 출제 문항 수 선택 상태 (10문항 vs 20문항)
+  const [chosenQCountMap, setChosenQCountMap] = useState<Record<string, number>>({});
+
+  const currentSelectedCount = selectedUnit
+    ? (chosenQCountMap[selectedUnit.id] ?? (selectedUnit.questionCount && selectedUnit.questionCount > 0 ? selectedUnit.questionCount : (selectedUnit.words.length >= 20 ? 20 : 10)))
+    : 20;
 
   const currentDateFormatted = new Intl.DateTimeFormat('ko-KR', {
     year: 'numeric',
@@ -332,9 +339,9 @@ export const UnitSelectScreen: React.FC<UnitSelectScreenProps> = ({
                             <span className="flex items-center gap-1">
                               <span className="material-symbols-outlined text-[15px] text-[#64748b]">format_list_numbered</span>
                               {(() => {
-                                const effectiveQCount = (unit.id !== 'sejong-unit-jamo' && unit.words.length >= 20 && (!unit.questionCount || unit.questionCount === 10))
-                                  ? 20
-                                  : (unit.questionCount && unit.questionCount > 0 ? Math.min(unit.questionCount, unit.words.length) : Math.min(20, unit.words.length));
+                                const effectiveQCount = (unit.id === selectedUnit?.id && chosenQCountMap[unit.id])
+                                  ? chosenQCountMap[unit.id]
+                                  : (unit.questionCount && unit.questionCount > 0 ? unit.questionCount : (unit.words.length >= 20 ? 20 : 10));
                                 return (
                                   <span>
                                     문항 수: <strong>{effectiveQCount}문항</strong>
@@ -378,12 +385,54 @@ export const UnitSelectScreen: React.FC<UnitSelectScreenProps> = ({
         )}
 
 
+        {/* 출제 문항 수 직접 선택 컨트롤러 (10문항 vs 20문항) */}
+        {selectedUnit && (
+          <div className="w-full bg-[#f8fafc] border border-[#e2e8f0] rounded-xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <span className="material-symbols-outlined text-[#0284c7] text-[22px]">tune</span>
+              <div className="flex flex-col text-left">
+                <span className="text-[13px] font-bold text-[#0c2340]">시험 출제 문항 수 선택</span>
+                <span className="text-[11px] text-[#64748b]">
+                  {selectedUnit.title} · 총 {selectedUnit.words.length}개 어휘 등록
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setChosenQCountMap((prev) => ({ ...prev, [selectedUnit.id]: 10 }))}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  currentSelectedCount === 10
+                    ? 'bg-[#0284c7] text-white shadow-xs ring-2 ring-[#0284c7]/20'
+                    : 'bg-white text-[#475569] border border-[#cbd5e1] hover:bg-slate-100'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[15px]">timer_10</span>
+                <span>10문항 시험</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setChosenQCountMap((prev) => ({ ...prev, [selectedUnit.id]: 20 }))}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  currentSelectedCount === 20
+                    ? 'bg-[#0284c7] text-white shadow-xs ring-2 ring-[#0284c7]/20'
+                    : 'bg-white text-[#475569] border border-[#cbd5e1] hover:bg-slate-100'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[15px]">quiz</span>
+                <span>20문항 시험 (정규/권장)</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Bottom Action CTAs */}
         {selectedUnit && (
           <div className="flex flex-col items-center gap-3 pt-2">
             <button
               type="button"
-              onClick={() => onSelectUnit(selectedUnit)}
+              onClick={() => onSelectUnit({ ...selectedUnit, questionCount: currentSelectedCount }, currentSelectedCount)}
               className="w-full h-[54px] rounded-xl bg-[#0c2340] hover:bg-[#163a66] text-white flex items-center justify-center gap-2 font-bold text-[15px] transition-all transform active:translate-y-0.5 shadow-md hover:shadow-lg cursor-pointer"
             >
               <span>{getButtonText(selectedUnit)}</span>
