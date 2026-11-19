@@ -253,6 +253,7 @@ export const VOCAB_IMAGES: Record<string, string> = {
   '봐요': 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=600&auto=format&fit=crop&q=80',
   '듣다': 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
   '들어요': 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
+  '읽어요': 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=600&auto=format&fit=crop&q=80',
   '만나다': 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=600&auto=format&fit=crop&q=80',
   '만나요': 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=600&auto=format&fit=crop&q=80',
   '자요': 'https://images.unsplash.com/photo-1541781774459-bb2af2f05b55?w=600&auto=format&fit=crop&q=80',
@@ -977,6 +978,41 @@ export function parseWordToken(rawInput: string): { promptPhrase?: string; targe
   return { targetWord: trimmed };
 }
 
+// 단어 및 문맥에 따른 품사 자동 감지 (명사(N), 동사(V), 형용사(A), 구(Phrase))
+export function detectPartOfSpeech(targetWord: string, promptPhrase?: string): string {
+  if (promptPhrase) return '구(Phrase)';
+  const clean = (targetWord || '').trim();
+  const dictMeaning = VOCAB_ENGLISH_DICTIONARY[clean];
+
+  if (
+    SEJONG_ADJECTIVES.has(clean) ||
+    (dictMeaning && dictMeaning.startsWith('To be '))
+  ) {
+    return '형용사(A)';
+  }
+
+  if (
+    clean.endsWith('다') ||
+    (dictMeaning && dictMeaning.startsWith('To ')) ||
+    clean.endsWith('해요') ||
+    clean.endsWith('어요') ||
+    clean.endsWith('아요') ||
+    clean.endsWith('여요') ||
+    clean.endsWith('셔요') ||
+    clean.endsWith('봐요') ||
+    clean.endsWith('와요') ||
+    clean.endsWith('줘요') ||
+    clean.endsWith('자요') ||
+    clean.endsWith('사요') ||
+    clean.endsWith('가요') ||
+    clean.endsWith('요')
+  ) {
+    return '동사(V)';
+  }
+
+  return '명사(N)';
+}
+
 export function createWordItem(
   rawInput: string,
   meaning: string,
@@ -986,18 +1022,10 @@ export function createWordItem(
 ): WordItem {
   const { promptPhrase, targetWord, fullPhrase } = parseWordToken(rawInput);
 
-  // 품사 자동 감지: 연어 문제인 경우 '구(Phrase)', 형용사 목록이면 '형용사(A)', '~다'로 끝나면 '동사(V)', 그 외 '명사(N)'
+  // 품사 자동 감지: 연어 문제인 경우 '구(Phrase)', 형용사 목록이면 '형용사(A)', '~다'/'-아요/어요'로 끝나거나 사전이 동사면 '동사(V)', 그 외 '명사(N)'
   let pos = extra?.partOfSpeech;
   if (!pos) {
-    if (promptPhrase) {
-      pos = '구(Phrase)';
-    } else if (SEJONG_ADJECTIVES.has(targetWord)) {
-      pos = '형용사(A)';
-    } else if (targetWord.endsWith('다')) {
-      pos = '동사(V)';
-    } else {
-      pos = '명사(N)';
-    }
+    pos = detectPartOfSpeech(targetWord, promptPhrase);
   } else if (promptPhrase) {
     pos = '구(Phrase)';
   }

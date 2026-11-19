@@ -7,6 +7,7 @@ import {
   createWordItem,
   parseWordToken,
   getWordEnglishMeaning,
+  detectPartOfSpeech,
   SEJONG_ADJECTIVES,
   getCandidateImagesForWord,
   getWordDisplayImage,
@@ -390,9 +391,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     }
 
     const { promptPhrase, targetWord } = parseWordToken(tokenToAdd);
-    const autoPos = promptPhrase
-      ? '구(Phrase)'
-      : (SEJONG_ADJECTIVES.has(targetWord) ? '형용사(A)' : (targetWord.endsWith('다') ? '동사(V)' : '명사(N)'));
+    const autoPos = detectPartOfSpeech(targetWord, promptPhrase);
     const english = promptPhrase ? undefined : getWordEnglishMeaning(targetWord);
     const newWordItem = createWordItem(
       tokenToAdd,
@@ -441,9 +440,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
 
     const newWordItems: WordItem[] = parsedWords.map((token) => {
       const { promptPhrase, targetWord } = parseWordToken(token);
-      const autoPos = promptPhrase
-        ? '구(Phrase)'
-        : (SEJONG_ADJECTIVES.has(targetWord) ? '형용사(A)' : (targetWord.endsWith('다') ? '동사(V)' : '명사(N)'));
+      const autoPos = detectPartOfSpeech(targetWord, promptPhrase);
       const english = promptPhrase ? undefined : getWordEnglishMeaning(targetWord);
       const existing = currentEditingUnit.words.find(
         (w) => w.word === targetWord && (w.promptPhrase || '') === (promptPhrase || '')
@@ -495,9 +492,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
     const newUnitId = `custom-unit-${Date.now()}`;
     const wordItems: WordItem[] = parsedWords.map((token) => {
       const { promptPhrase, targetWord } = parseWordToken(token);
-      const autoPos = promptPhrase
-        ? '구(Phrase)'
-        : (SEJONG_ADJECTIVES.has(targetWord) ? '형용사(A)' : (targetWord.endsWith('다') ? '동사(V)' : '명사(N)'));
+      const autoPos = detectPartOfSpeech(targetWord, promptPhrase);
       const english = promptPhrase ? undefined : getWordEnglishMeaning(targetWord);
       return createWordItem(token, `${promptPhrase ? `${promptPhrase} ` : ''}${targetWord} 어휘 학습`, '학습어휘', undefined, {
         partOfSpeech: autoPos,
@@ -560,9 +555,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
         const existing = currentEditingUnit.words.find(
           (w) => w.word === targetWord && (w.promptPhrase || '') === (promptPhrase || '')
         );
-        const autoPos = promptPhrase
-          ? '구(Phrase)'
-          : (SEJONG_ADJECTIVES.has(targetWord) ? '형용사(A)' : (targetWord.endsWith('다') ? '동사(V)' : '명사(N)'));
+        const autoPos = detectPartOfSpeech(targetWord, promptPhrase);
         const english = promptPhrase ? undefined : getWordEnglishMeaning(targetWord);
         const item =
           existing ||
@@ -603,9 +596,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
         const existing = currentEditingUnit.words.find(
           (w) => w.word === targetWord && (w.promptPhrase || '') === (promptPhrase || '')
         );
-        const autoPos = promptPhrase
-          ? '구(Phrase)'
-          : (SEJONG_ADJECTIVES.has(targetWord) ? '형용사(A)' : (targetWord.endsWith('다') ? '동사(V)' : '명사(N)'));
+        const autoPos = detectPartOfSpeech(targetWord, promptPhrase);
         const english = promptPhrase ? undefined : getWordEnglishMeaning(targetWord);
         const item =
           existing ||
@@ -1505,7 +1496,7 @@ function setupClassSheets() {
                                             {targetWord}
                                           </span>
                                           <span className="text-[9px] px-1 py-0.5 bg-sky-100 text-sky-700 rounded font-semibold">
-                                            {SEJONG_ADJECTIVES.has(targetWord) ? '형용사' : (targetWord.endsWith('다') ? '동사' : '명사')}
+                                            {detectPartOfSpeech(targetWord).replace(/\(.\)/, '')}
                                           </span>
                                         </div>
                                         {getWordEnglishMeaning(targetWord) && (
@@ -1722,7 +1713,7 @@ function setupClassSheets() {
                                           {targetWord}
                                         </span>
                                         <span className="text-[9px] px-1 py-0.5 bg-sky-100 text-sky-700 rounded font-semibold">
-                                          {SEJONG_ADJECTIVES.has(targetWord) ? '형용사' : (targetWord.endsWith('다') ? '동사' : '명사')}
+                                          {detectPartOfSpeech(targetWord).replace(/\(.\)/, '')}
                                         </span>
                                       </div>
                                       {getWordEnglishMeaning(targetWord) && (
